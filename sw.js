@@ -1,13 +1,11 @@
 // Planner Pro — Service Worker
-// Cache-first, offline-first, update-aware
-
-const APP_VERSION = '1.0';
-const CACHE_NAME = `planner-pro-v${APP_VERSION}`;
-const BASE_PATH = self.location.pathname.replace(/sw\.js$/, '') || '/PlannerPro/';
+// Версия кэша обновляется при каждом изменении структуры/кода
+const CACHE_NAME = 'planner-pro-v2.1';
 
 const ASSETS = [
   './',
   './index.html',
+  './404.html',
   './app.js',
   './styles.css',
   './manifest.json',
@@ -23,20 +21,19 @@ const ASSETS = [
   './apple-touch-icon.png'
 ];
 
-// Install: cache all assets
+// Установка: кэшируем все необходимые файлы
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS.map(p => p.replace('./', BASE_PATH)));
-    }).catch(() => {
-      // Graceful: some assets may be missing (icons)
-      return Promise.resolve();
+      return cache.addAll(ASSETS);
+    }).catch((err) => {
+      console.error('SW Install Error:', err);
     })
   );
-  self.skipWaiting();
+  // ВАЖНО: Не вызываем skipWaiting() здесь, чтобы дать пользователю шанс обновиться по кнопке
 });
 
-// Activate: clean old caches
+// Активация: удаляем старые кэши
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -49,32 +46,43 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: cache-first strategy
+// Обработка сообщений от клиента (для обновления)
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.action === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Стратегия получения: Cache First, Network Fallback
 self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  
-  // Skip non-GET requests
-  if (request.method !== 'GET') return;
-  
-  // Skip external requests
-  if (!request.url.startsWith(self.location.origin)) return;
+  // Игнорируем не-GET запросы и внешние ресурсы
+  if (event.request.method !== 'GET') return;
+  if (!event.request.url.startsWith(self.location.origin)) return;
 
   event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then((response) => {
-        // Cache successful responses
-        if (response && response.status === 200 && response.type === 'basic') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+    caches.match(event.request).then((cachedResponse) => {
+      // Если есть в кэше — отдаем
+      if (cachedResponse) return cachedResponse;
+
+      // Если нет — идем в сеть
+      return fetch(event.request).then((response) => {
+        // Если ответ валидный — кэшируем его
+        if (!response || response.status !== 200 || response.type !== 'basic') {
+          return response;
         }
+
+        const responseToCache = response.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, responseToCache);
+        });
+
         return response;
       }).catch(() => {
-        // Offline fallback for navigation
-        if (request.mode === 'navigate') {
-          return caches.match(BASE_PATH + 'index.html');
+        // Если сети нет и нет в кэше
+        // Для навигации отдаем index.html (SPA fallback)
+        if (event.request.mode === 'navigate') {
+          return caches.match('./index.html');
         }
-        return new Response('Offline', { status: 503 });
       });
     })
   );
