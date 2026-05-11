@@ -1,2172 +1,1255 @@
-// Planner Pro v2.1 — Main Application Logic
-const APP_VERSION = '2.1';
-const DB_NAME = 'planner_db';
-const DB_VERSION = 1;
+import {
+  loadState,
+  state,
 
-// ===== Color Schemes =====
-const SCHEMES = {
-  ocean:   { start: '#667eea', end: '#764ba2', accent: '#4facfe' },
-  sunset:  { start: '#fa709a', end: '#fee140', accent: '#ff6b6b' },
-  forest:  { start: '#11998e', end: '#38ef7d', accent: '#00d9a5' },
-  neon:    { start: '#b721ff', end: '#21d4fd', accent: '#e94560' }
-};
+  createTask,
+  toggleTask,
+  removeTask,
 
-const PROJECT_COLORS = ['#667eea','#fa709a','#11998e','#b721ff','#ff6b6b','#feca57','#48dbfb','#1dd1a1'];
+  createNote,
+  createProject,
 
-// ===== UUID Generator =====
-function uuid() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-  });
-}
+  updateTheme,
+  updateAccent
+} from './state.js';
 
-// ===== Date Utils =====
-function formatDate(d) {
-  if (!d) return '';
-  const date = new Date(d);
-  const now = new Date();
-  const opts = { day: 'numeric', month: 'long' };
-  if (date.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
-  return date.toLocaleDateString('ru-RU', opts);
-}
+import {
 
-function formatDateISO(d) {
-  const date = new Date(d);
-  return date.toISOString().split('T')[0];
-}
+  renderView,
 
-function isOverdue(d) {
-  if (!d) return false;
-  const date = new Date(d);
-  date.setHours(23,59,59,999);
-  return date < new Date();
-}
+  renderDashboard,
+  renderTasks,
+  renderProjects,
+  renderNotes,
+  renderCalendar,
 
-function isToday(d) {
-  if (!d) return false;
-  const date = new Date(d);
-  const now = new Date();
-  return date.toDateString() === now.toDateString();
-}
+  renderHeader,
 
-function addDays(d, days) {
-  const date = new Date(d);
-  date.setDate(date.getDate() + days);
-  return formatDateISO(date);
-}
+  searchAll,
+  renderSearchResults
 
-function addMonths(d, months) {
-  const date = new Date(d);
-  date.setMonth(date.getMonth() + months);
-  return formatDateISO(date);
-}
+} from './render.js';
 
-function getWeekStart(d) {
-  const date = new Date(d);
-  const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(date.setDate(diff));
-}
+import {
 
-function getMonthName(year, month) {
-  return new Date(year, month).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-}
+  showToast,
+  debounce,
 
-// ===== Sanitization =====
-function sanitizeHTML(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+  initKeyboardDetection,
+  registerSW,
 
-// ===== Deep Clone =====
-function clone(obj) {
-  return JSON.parse(JSON.stringify(obj));
-}
+  vibrate
 
-// ===== Debounce =====
-function debounce(fn, ms) {
-  let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), ms);
-  };
-}
+} from './utils.js';
 
-// ===== Store (Event-based state) =====
-class Store {
-  constructor() {
-    this.state = {};
-    this.listeners = {};
+/* =========================
+   INIT
+========================= */
+
+document.addEventListener(
+  'DOMContentLoaded',
+  initApp
+);
+
+async function initApp() {
+
+  try {
+
+    await loadState();
+
+    applySettings();
+
+    renderAll();
+
+    bindNavigation();
+    bindTabs();
+    bindActions();
+
+    bindCalendar();
+
+    bindSearch();
+    bindFab();
+
+    initKeyboardDetection();
+
+    registerSW();
+
+    showToast(
+      'Planner Pro готов к работе',
+      'success'
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+    showToast(
+      'Ошибка загрузки приложения',
+      'error'
+    );
+
   }
-  on(event, cb) {
-    if (!this.listeners[event]) this.listeners[event] = [];
-    this.listeners[event].push(cb);
-    return () => this.off(event, cb);
-  }
-  off(event, cb) {
-    if (!this.listeners[event]) return;
-    this.listeners[event] = this.listeners[event].filter(l => l !== cb);
-  }
-  emit(event, data) {
-    if (!this.listeners[event]) return;
-    this.listeners[event].forEach(cb => cb(data));
-  }
-  set(key, value) {
-    this.state[key] = value;
-    this.emit(key, value);
-  }
-  get(key) {
-    return this.state[key];
-  }
+
 }
 
-const store = new Store();
+/* =========================
+   SETTINGS
+========================= */
 
-// ===== IndexedDB =====
-let db = null;
+function applySettings() {
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => { db = request.result; resolve(db); };
-    
-    request.onblocked = () => {
-      showToast('Пожалуйста, закройте другие вкладки приложения', 'error');
-    };
-    
-    request.onupgradeneeded = (event) => {
-      const database = event.target.result;
-      
-      if (!database.objectStoreNames.contains('tasks')) {
-        const tasksStore = database.createObjectStore('tasks', { keyPath: 'id' });
-        tasksStore.createIndex('by_project', 'projectId', { unique: false });
-        tasksStore.createIndex('by_dueDate', 'dueDate', { unique: false });
-        tasksStore.createIndex('by_status', 'status', { unique: false });
-        tasksStore.createIndex('by_priority', 'priority', { unique: false });
-        tasksStore.createIndex('by_createdAt', 'createdAt', { unique: false });
+  document.body.dataset.theme =
+    state.settings.theme;
+
+  document.body.dataset.accent =
+    state.settings.accent;
+
+}
+
+/* =========================
+   RENDER
+========================= */
+
+function renderAll() {
+
+  renderHeader();
+
+  renderDashboard();
+
+  renderTasks();
+
+  renderProjects();
+
+  renderNotes();
+
+  renderCalendar();
+
+}
+
+/* =========================
+   NAVIGATION
+========================= */
+
+function bindNavigation() {
+
+  document
+    .querySelectorAll(
+      '.bottom-nav-btn'
+    )
+    .forEach((button) => {
+
+      button.addEventListener(
+        'click',
+        () => {
+
+          const view =
+            button.dataset.view;
+
+          renderView(view);
+
+          vibrate(8);
+
+        }
+      );
+
+    });
+
+  document
+    .querySelectorAll(
+      '[data-view-link]'
+    )
+    .forEach((button) => {
+
+      button.addEventListener(
+        'click',
+        () => {
+
+          const view =
+            button.dataset.viewLink;
+
+          renderView(view);
+
+          vibrate(8);
+
+        }
+      );
+
+    });
+
+}
+
+/* =========================
+   TASK TABS
+========================= */
+
+function bindTabs() {
+
+  const tabs =
+    document.querySelectorAll(
+      '.tab-btn'
+    );
+
+  tabs.forEach((tab) => {
+
+    tab.addEventListener(
+      'click',
+      () => {
+
+        tabs.forEach((item) => {
+          item.classList.remove(
+            'active'
+          );
+        });
+
+        tab.classList.add(
+          'active'
+        );
+
+        state.currentTaskTab =
+          tab.dataset.tab;
+
+        renderTasks();
+
+        vibrate(6);
+
       }
-      
-      if (!database.objectStoreNames.contains('notes')) {
-        const notesStore = database.createObjectStore('notes', { keyPath: 'id' });
-        notesStore.createIndex('by_project', 'projectId', { unique: false });
-        notesStore.createIndex('by_isPinned', 'isPinned', { unique: false });
-        notesStore.createIndex('by_createdAt', 'createdAt', { unique: false });
+    );
+
+  });
+
+}
+
+/* =========================
+   ACTIONS
+========================= */
+
+function bindActions() {
+
+  document.addEventListener(
+    'click',
+    async (event) => {
+
+      const action =
+        event.target.dataset.action;
+
+      const id =
+        event.target.dataset.id;
+
+      if (!action) {
+        return;
       }
-      
-      if (!database.objectStoreNames.contains('projects')) {
-        database.createObjectStore('projects', { keyPath: 'id' });
+
+      switch (action) {
+
+        case 'toggle-task':
+
+          await toggleTask(id);
+
+          renderAll();
+
+          vibrate([10, 30, 10]);
+
+          break;
+
+        case 'delete-task':
+
+          if (
+            confirm(
+              'Удалить задачу?'
+            )
+          ) {
+
+            await removeTask(id);
+
+            renderAll();
+
+            showToast(
+              'Задача удалена'
+            );
+
+            vibrate(12);
+
+          }
+
+          break;
+
+        case 'edit-task':
+
+          showToast(
+            'Редактор будет подключён далее'
+          );
+
+          break;
+
       }
-      
-      if (!database.objectStoreNames.contains('tags')) {
-        database.createObjectStore('tags', { keyPath: 'id' });
+
+    }
+  );
+
+}
+
+/* =========================
+   CALENDAR
+========================= */
+
+function bindCalendar() {
+
+  const prev =
+    document.getElementById(
+      'calendar-prev'
+    );
+
+  const next =
+    document.getElementById(
+      'calendar-next'
+    );
+
+  prev?.addEventListener(
+    'click',
+    () => {
+
+      state.calendarDate =
+        new Date(
+          state.calendarDate.getFullYear(),
+          state.calendarDate.getMonth() - 1,
+          1
+        );
+
+      renderCalendar();
+
+      vibrate(6);
+
+    }
+  );
+
+  next?.addEventListener(
+    'click',
+    () => {
+
+      state.calendarDate =
+        new Date(
+          state.calendarDate.getFullYear(),
+          state.calendarDate.getMonth() + 1,
+          1
+        );
+
+      renderCalendar();
+
+      vibrate(6);
+
+    }
+  );
+
+}
+
+/* =========================
+   SEARCH
+========================= */
+
+function bindSearch() {
+
+  createSearchOverlay();
+
+  const openBtn =
+    document.getElementById(
+      'search-open-btn'
+    );
+
+  const overlay =
+    document.getElementById(
+      'search-overlay'
+    );
+
+  const input =
+    document.getElementById(
+      'search-input'
+    );
+
+  openBtn?.addEventListener(
+    'click',
+    () => {
+
+      overlay.classList.add(
+        'active'
+      );
+
+      setTimeout(() => {
+        input?.focus();
+      }, 120);
+
+    }
+  );
+
+  overlay?.addEventListener(
+    'click',
+    (event) => {
+
+      if (
+        event.target === overlay
+      ) {
+
+        overlay.classList.remove(
+          'active'
+        );
+
       }
-      
-      if (!database.objectStoreNames.contains('settings')) {
-        database.createObjectStore('settings', { keyPath: 'key' });
+
+    }
+  );
+
+  input?.addEventListener(
+    'input',
+    debounce((event) => {
+
+      const results =
+        searchAll(
+          event.target.value
+        );
+
+      renderSearchResults(
+        results
+      );
+
+    }, 200)
+  );
+
+}
+
+function createSearchOverlay() {
+
+  const overlay =
+    document.createElement('div');
+
+  overlay.className =
+    'search-overlay';
+
+  overlay.id =
+    'search-overlay';
+
+  overlay.innerHTML = `
+    <div class="search-panel">
+
+      <div
+        class="search-input-wrap"
+      >
+
+        <input
+          id="search-input"
+          class="glass-input"
+          type="search"
+          placeholder="Поиск..."
+          autocomplete="off"
+        >
+
+      </div>
+
+      <div
+        id="search-results"
+        class="search-results"
+      ></div>
+
+    </div>
+  `;
+
+  document.body.appendChild(
+    overlay
+  );
+
+}
+
+/* =========================
+   FAB
+========================= */
+
+function bindFab() {
+
+  const fab =
+    document.getElementById(
+      'fab'
+    );
+
+  fab?.addEventListener(
+    'click',
+    openCreateMenu
+  );
+
+}
+
+function openCreateMenu() {
+
+  const overlay =
+    document.createElement('div');
+
+  overlay.className =
+    'modal-overlay active';
+
+  overlay.innerHTML = `
+    <div class="modal-sheet">
+
+      <div class="modal-handle"></div>
+
+      <div class="section-title-row">
+        <h2>Создать</h2>
+      </div>
+
+      <div class="task-list">
+
+        <button
+          class="primary-btn"
+          data-create="task"
+        >
+          ✅ Новая задача
+        </button>
+
+        <button
+          class="secondary-btn"
+          data-create="note"
+        >
+          📝 Новая заметка
+        </button>
+
+        <button
+          class="secondary-btn"
+          data-create="project"
+        >
+          📁 Новый проект
+        </button>
+
+      </div>
+
+    </div>
+  `;
+
+  document.body.appendChild(
+    overlay
+  );
+
+  overlay.addEventListener(
+    'click',
+    async (event) => {
+
+      if (
+        event.target === overlay
+      ) {
+
+        overlay.remove();
+
+        return;
+
       }
-      
-      if (!database.objectStoreNames.contains('sync_meta')) {
-        database.createObjectStore('sync_meta', { keyPath: 'key' });
+
+      const type =
+        event.target.dataset.create;
+
+      if (!type) {
+        return;
       }
-    };
-  });
+
+      overlay.remove();
+
+      switch (type) {
+
+        case 'task':
+          openTaskModal();
+          break;
+
+        case 'note':
+          openNoteModal();
+          break;
+
+        case 'project':
+          openProjectModal();
+          break;
+
+      }
+
+    }
+  );
+
 }
 
-// Generic CRUD operations
-function dbAdd(storeName, data) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const store = tx.objectStore(storeName);
-    const req = store.add(data);
-    req.onsuccess = () => resolve(data);
-    req.onerror = () => reject(req.error);
-  });
+/* =========================
+   TASK MODAL
+========================= */
+
+function openTaskModal() {
+
+  const overlay =
+    createModal(`
+      <div class="section-title-row">
+        <h2>Новая задача</h2>
+      </div>
+
+      <form id="task-form">
+
+        <div class="form-group">
+
+          <label class="form-label">
+            Название
+          </label>
+
+          <input
+            required
+            id="task-title"
+            class="glass-input"
+            type="text"
+            maxlength="120"
+            placeholder="Введите задачу"
+          >
+
+        </div>
+
+        <div class="form-group">
+
+          <label class="form-label">
+            Описание
+          </label>
+
+          <textarea
+            id="task-description"
+            class="
+              glass-input
+              form-textarea
+            "
+            placeholder="Описание задачи"
+          ></textarea>
+
+        </div>
+
+        <div class="form-row">
+
+          <div class="form-group">
+
+            <label class="form-label">
+              Приоритет
+            </label>
+
+            <div class="select-wrap">
+
+              <select
+                id="task-priority"
+                class="form-select"
+              >
+                <option value="low">
+                  Низкий
+                </option>
+
+                <option
+                  value="medium"
+                  selected
+                >
+                  Средний
+                </option>
+
+                <option value="high">
+                  Высокий
+                </option>
+
+              </select>
+
+            </div>
+
+          </div>
+
+          <div class="form-group">
+
+            <label class="form-label">
+              Дата
+            </label>
+
+            <input
+              id="task-date"
+              class="glass-input"
+              type="date"
+            >
+
+          </div>
+
+        </div>
+
+        <div class="form-actions">
+
+          <button
+            type="button"
+            class="secondary-btn"
+            id="task-cancel"
+          >
+            Отмена
+          </button>
+
+          <button
+            type="submit"
+            class="primary-btn"
+          >
+            Создать
+          </button>
+
+        </div>
+
+      </form>
+    `);
+
+  const form =
+    overlay.querySelector(
+      '#task-form'
+    );
+
+  const cancel =
+    overlay.querySelector(
+      '#task-cancel'
+    );
+
+  cancel?.addEventListener(
+    'click',
+    () => {
+      closeModal(overlay);
+    }
+  );
+
+  form?.addEventListener(
+    'submit',
+    async (event) => {
+
+      event.preventDefault();
+
+      const title =
+        form.querySelector(
+          '#task-title'
+        ).value.trim();
+
+      const description =
+        form.querySelector(
+          '#task-description'
+        ).value.trim();
+
+      const priority =
+        form.querySelector(
+          '#task-priority'
+        ).value;
+
+      const date =
+        form.querySelector(
+          '#task-date'
+        ).value;
+
+      if (!title) {
+        return;
+      }
+
+      await createTask({
+
+        title,
+        description,
+        priority,
+
+        dueDate:
+          date
+            ? new Date(date).getTime()
+            : null
+
+      });
+
+      renderAll();
+
+      closeModal(overlay);
+
+      showToast(
+        'Задача создана',
+        'success'
+      );
+
+      vibrate([12, 40, 12]);
+
+    }
+  );
+
 }
 
-function dbPut(storeName, data) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const store = tx.objectStore(storeName);
-    const req = store.put(data);
-    req.onsuccess = () => resolve(data);
-    req.onerror = () => reject(req.error);
-  });
+/* =========================
+   NOTE MODAL
+========================= */
+
+function openNoteModal() {
+
+  const overlay =
+    createModal(`
+      <div class="section-title-row">
+        <h2>Новая заметка</h2>
+      </div>
+
+      <form id="note-form">
+
+        <div class="form-group">
+
+          <label class="form-label">
+            Заголовок
+          </label>
+
+          <input
+            required
+            id="note-title"
+            class="glass-input"
+            type="text"
+            maxlength="120"
+            placeholder="Название заметки"
+          >
+
+        </div>
+
+        <div class="form-group">
+
+          <label class="form-label">
+            Текст
+          </label>
+
+          <textarea
+            id="note-content"
+            class="
+              glass-input
+              form-textarea
+            "
+            placeholder="Введите текст заметки"
+          ></textarea>
+
+        </div>
+
+        <div class="form-actions">
+
+          <button
+            type="button"
+            class="secondary-btn"
+            id="note-cancel"
+          >
+            Отмена
+          </button>
+
+          <button
+            type="submit"
+            class="primary-btn"
+          >
+            Создать
+          </button>
+
+        </div>
+
+      </form>
+    `);
+
+  const form =
+    overlay.querySelector(
+      '#note-form'
+    );
+
+  overlay
+    .querySelector(
+      '#note-cancel'
+    )
+    ?.addEventListener(
+      'click',
+      () => {
+        closeModal(overlay);
+      }
+    );
+
+  form?.addEventListener(
+    'submit',
+    async (event) => {
+
+      event.preventDefault();
+
+      const title =
+        form.querySelector(
+          '#note-title'
+        ).value.trim();
+
+      const content =
+        form.querySelector(
+          '#note-content'
+        ).value.trim();
+
+      if (!title) {
+        return;
+      }
+
+      await createNote({
+        title,
+        content
+      });
+
+      renderAll();
+
+      closeModal(overlay);
+
+      showToast(
+        'Заметка создана',
+        'success'
+      );
+
+    }
+  );
+
 }
 
-function dbGet(storeName, id) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly');
-    const store = tx.objectStore(storeName);
-    const req = store.get(id);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+/* =========================
+   PROJECT MODAL
+========================= */
+
+function openProjectModal() {
+
+  const overlay =
+    createModal(`
+      <div class="section-title-row">
+        <h2>Новый проект</h2>
+      </div>
+
+      <form id="project-form">
+
+        <div class="form-group">
+
+          <label class="form-label">
+            Название
+          </label>
+
+          <input
+            required
+            id="project-title"
+            class="glass-input"
+            type="text"
+            maxlength="120"
+            placeholder="Название проекта"
+          >
+
+        </div>
+
+        <div class="form-group">
+
+          <label class="form-label">
+            Описание
+          </label>
+
+          <textarea
+            id="project-description"
+            class="
+              glass-input
+              form-textarea
+            "
+            placeholder="Описание проекта"
+          ></textarea>
+
+        </div>
+
+        <div class="form-actions">
+
+          <button
+            type="button"
+            class="secondary-btn"
+            id="project-cancel"
+          >
+            Отмена
+          </button>
+
+          <button
+            type="submit"
+            class="primary-btn"
+          >
+            Создать
+          </button>
+
+        </div>
+
+      </form>
+    `);
+
+  const form =
+    overlay.querySelector(
+      '#project-form'
+    );
+
+  overlay
+    .querySelector(
+      '#project-cancel'
+    )
+    ?.addEventListener(
+      'click',
+      () => {
+        closeModal(overlay);
+      }
+    );
+
+  form?.addEventListener(
+    'submit',
+    async (event) => {
+
+      event.preventDefault();
+
+      const title =
+        form.querySelector(
+          '#project-title'
+        ).value.trim();
+
+      const description =
+        form.querySelector(
+          '#project-description'
+        ).value.trim();
+
+      if (!title) {
+        return;
+      }
+
+      await createProject({
+        title,
+        description
+      });
+
+      renderAll();
+
+      closeModal(overlay);
+
+      showToast(
+        'Проект создан',
+        'success'
+      );
+
+      vibrate(12);
+
+    }
+  );
+
 }
 
-function dbDelete(storeName, id) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const store = tx.objectStore(storeName);
-    const req = store.delete(id);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
+/* =========================
+   MODAL HELPERS
+========================= */
+
+function createModal(
+  content
+) {
+
+  const overlay =
+    document.createElement('div');
+
+  overlay.className =
+    'modal-overlay active';
+
+  overlay.innerHTML = `
+    <div class="modal-sheet">
+
+      <div class="modal-handle"></div>
+
+      ${content}
+
+    </div>
+  `;
+
+  overlay.addEventListener(
+    'click',
+    (event) => {
+
+      if (
+        event.target === overlay
+      ) {
+
+        closeModal(overlay);
+
+      }
+
+    }
+  );
+
+  document.body.appendChild(
+    overlay
+  );
+
+  return overlay;
+
 }
 
-function dbGetAll(storeName) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly');
-    const store = tx.objectStore(storeName);
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-}
+function closeModal(
+  overlay
+) {
 
-function dbGetByIndex(storeName, indexName, value) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly');
-    const store = tx.objectStore(storeName);
-    const idx = store.index(indexName);
-    const req = idx.getAll(value);
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-}
+  overlay.classList.remove(
+    'active'
+  );
 
-// ===== Settings =====
-async function getSetting(key, defaultValue = null) {
-  const result = await dbGet('settings', key);
-  return result ? result.value : defaultValue;
-}
-
-async function setSetting(key, value) {
-  await dbPut('settings', { key, value });
-}
-
-// ===== Demo Data =====
-async function seedDemoData() {
-  const existing = await dbGetAll('projects');
-  if (existing.length > 0) return;
-
-  const today = formatDateISO(new Date());
-  
-  const projects = [
-    { id: uuid(), name: 'Работа', description: 'Рабочие задачи', color: '#667eea', icon: '💼', isArchived: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: uuid(), name: 'Личное', description: 'Личные дела', color: '#11998e', icon: '🏠', isArchived: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: uuid(), name: 'Учёба', description: 'Обучение и курсы', color: '#b721ff', icon: '📚', isArchived: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-  ];
-  
-  for (const p of projects) await dbAdd('projects', p);
-  
-  const tasks = [
-    { id: uuid(), title: 'Завершить отчёт', description: 'Подготовить еженедельный отчёт', projectId: projects[0].id, priority: 'high', dueDate: today, startTime: '09:00', endTime: '11:00', repeat: 'none', repeatConfig: null, subtasks: [{id: uuid(), title: 'Собрать данные', completed: true}, {id: uuid(), title: 'Составить графики', completed: false}], tags: ['работа','важно'], status: 'active', createdAt: new Date().toISOString(), completedAt: null, updatedAt: new Date().toISOString() },
-    { id: uuid(), title: 'Купить продукты', description: 'Молоко, хлеб, яйца', projectId: projects[1].id, priority: 'medium', dueDate: today, startTime: null, endTime: null, repeat: 'weekly', repeatConfig: null, subtasks: [], tags: ['личное'], status: 'active', createdAt: new Date().toISOString(), completedAt: null, updatedAt: new Date().toISOString() },
-    { id: uuid(), title: 'Прочитать главу книги', description: 'Глава 5 по JavaScript', projectId: projects[2].id, priority: 'low', dueDate: addDays(today, 2), startTime: null, endTime: null, repeat: 'none', repeatConfig: null, subtasks: [], tags: ['учёба'], status: 'active', createdAt: new Date().toISOString(), completedAt: null, updatedAt: new Date().toISOString() },
-    { id: uuid(), title: 'Позвонить маме', description: '', projectId: null, priority: 'medium', dueDate: null, startTime: null, endTime: null, repeat: 'none', repeatConfig: null, subtasks: [], tags: [], status: 'active', createdAt: new Date().toISOString(), completedAt: null, updatedAt: new Date().toISOString() }
-  ];
-  
-  for (const t of tasks) await dbAdd('tasks', t);
-  
-  const notes = [
-    { id: uuid(), title: 'Идеи для проекта', content: '<h1>Новые идеи</h1><p>1. Добавить тёмную тему</p><p>2. Улучшить производительность</p><ul><li>Оптимизировать рендеринг</li><li>Добавить виртуализацию списков</li></ul>', projectId: projects[0].id, tags: ['идеи'], isPinned: true, isFavorite: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
-    { id: uuid(), title: 'Рецепт пасты', content: '<p><b>Ингредиенты:</b></p><ul><li>Спагетти 400г</li><li>Помидоры 500г</li><li>Чеснок 3 зубчика</li></ul><p><i>Приготовить соус, сварить пасту...</i></p>', projectId: projects[1].id, tags: ['рецепты'], isPinned: false, isFavorite: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-  ];
-  
-  for (const n of notes) await dbAdd('notes', n);
-  
-  const tags = [
-    { id: uuid(), name: 'работа', color: '#667eea', usageCount: 1 },
-    { id: uuid(), name: 'важно', color: '#ef4444', usageCount: 1 },
-    { id: uuid(), name: 'личное', color: '#11998e', usageCount: 1 },
-    { id: uuid(), name: 'учёба', color: '#b721ff', usageCount: 1 },
-    { id: uuid(), name: 'идеи', color: '#feca57', usageCount: 1 },
-    { id: uuid(), name: 'рецепты', color: '#48dbfb', usageCount: 1 }
-  ];
-  
-  for (const t of tags) await dbAdd('tags', t);
-}
-
-// ===== Toast =====
-function showToast(message, type = 'info', duration = 3000) {
-  const container = document.getElementById('toast-container');
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  
-  const icons = {
-    success: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-    error: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
-    info: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
-  };
-  
-  toast.innerHTML = `${icons[type]}<span>${sanitizeHTML(message)}</span>`;
-  container.appendChild(toast);
-  
   setTimeout(() => {
-    toast.classList.add('hiding');
-    toast.addEventListener('animationend', () => toast.remove());
-  }, duration);
+    overlay.remove();
+  }, 220);
+
 }
 
-// ===== Confirm Dialog =====
-function showConfirm(message, onConfirm, onCancel) {
-  const dialog = document.getElementById('confirm-dialog');
-  const msgEl = document.getElementById('confirm-message');
-  const okBtn = document.getElementById('confirm-ok');
-  const cancelBtn = document.getElementById('confirm-cancel');
-  
-  msgEl.textContent = message;
-  dialog.classList.add('active');
-  
-  const cleanup = () => {
-    dialog.classList.remove('active');
-    okBtn.onclick = null;
-    cancelBtn.onclick = null;
-  };
-  
-  okBtn.onclick = () => { cleanup(); onConfirm?.(); };
-  cancelBtn.onclick = () => { cleanup(); onCancel?.(); };
-}
+/* =========================
+   SETTINGS PANEL
+========================= */
 
-// ===== Modal Management =====
-let currentModal = null;
+createSettingsPanel();
 
-function openModal(id) {
-  closeAllModals();
-  const modal = document.getElementById(id);
-  if (modal) {
-    modal.classList.add('active');
-    currentModal = modal;
-    document.body.style.overflow = 'hidden';
-    
-    const input = modal.querySelector('input, textarea, [contenteditable]');
-    if (input) setTimeout(() => input.focus(), 100);
-  }
-}
+function createSettingsPanel() {
 
-function closeModal(id) {
-  const modal = document.getElementById(id);
-  if (modal) {
-    modal.classList.remove('active');
-    if (currentModal === modal) {
-      currentModal = null;
-      document.body.style.overflow = '';
-    }
-  }
-}
-
-function closeAllModals() {
-  document.querySelectorAll('.modal.active, .bottom-sheet.active').forEach(m => {
-    m.classList.remove('active');
-  });
-  currentModal = null;
-  document.body.style.overflow = '';
-}
-
-document.addEventListener('click', (e) => {
-  if (e.target.classList.contains('modal-overlay') || e.target.classList.contains('sheet-overlay')) {
-    closeAllModals();
-  }
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeAllModals();
-});
-
-// ===== Navigation =====
-let currentView = 'dashboard';
-
-function navigateTo(view) {
-  window.location.hash = view;
-  
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  const targetView = document.getElementById(`view-${view}`);
-  if (targetView) targetView.classList.add('active');
-  
-  document.querySelectorAll('.nav-item, .side-nav-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.view === view);
-  });
-  
-  const titles = {
-    dashboard: 'Главная',
-    tasks: 'Задачи',
-    calendar: 'Календарь',
-    notes: 'Заметки',
-    projects: 'Проекты',
-    stats: 'Статистика',
-    archive: 'Архив',
-    search: 'Поиск',
-    settings: 'Настройки'
-  };
-  document.getElementById('page-title').textContent = titles[view] || 'Planner Pro';
-  
-  const fab = document.getElementById('fab');
-  const showFab = ['dashboard', 'tasks', 'notes', 'projects'].includes(view);
-  fab.style.display = showFab ? 'flex' : 'none';
-  
-  currentView = view;
-  
-  if (view === 'dashboard') renderDashboard();
-  if (view === 'tasks') renderTasks();
-  if (view === 'calendar') renderCalendar();
-  if (view === 'notes') renderNotes();
-  if (view === 'projects') renderProjects();
-  if (view === 'stats') renderStats();
-  if (view === 'archive') renderArchive();
-  
-  document.getElementById('main-content').scrollTop = 0;
-}
-
-window.addEventListener('hashchange', () => {
-  const view = window.location.hash.slice(1) || 'dashboard';
-  navigateTo(view);
-});
-
-document.querySelectorAll('.nav-item, .side-nav-item').forEach(item => {
-  item.addEventListener('click', () => {
-    const view = item.dataset.view;
-    if (view) navigateTo(view);
-  });
-});
-
-// ===== Dashboard =====
-async function renderDashboard() {
-  const today = formatDateISO(new Date());
-  const tasks = await dbGetAll('tasks');
-  const notes = await dbGetAll('notes');
-  const projects = await dbGetAll('projects');
-  
-  // Welcome with new time frames: 03:01-09:00 morning, 09:01-17:00 day, 17:01-22:00 evening, 22:01-03:00 night
-  const hour = new Date().getHours();
-  let greeting = 'Доброй ночи!';
-  if (hour >= 3 && hour < 9) greeting = 'Доброе утро!';
-  else if (hour >= 9 && hour < 17) greeting = 'Добрый день!';
-  else if (hour >= 17 && hour < 22) greeting = 'Добрый вечер!';
-  document.getElementById('welcome-greeting').textContent = greeting;
-  document.getElementById('welcome-date').textContent = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  
-  // Progress day (correct calculation: completed / (active + completed) for today)
-  const todayTasks = tasks.filter(t => t.dueDate === today && (t.status === 'active' || t.status === 'completed'));
-  const completedToday = todayTasks.filter(t => t.status === 'completed').length;
-  const totalToday = todayTasks.length;
-  const progress = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
-  document.getElementById('day-progress-value').textContent = `${progress}%`;
-  const progressFill = document.getElementById('day-progress-fill');
-  if (progressFill) progressFill.style.width = `${progress}%`;
-  
-  // Tasks for the next N days (N = 2..7 from settings)
-  const daysRange = parseInt(await getSetting('daysRange', '2'));
-  const maxDate = addDays(today, daysRange - 1);
-  const upcomingTasks = tasks.filter(t => t.dueDate && t.dueDate >= today && t.dueDate <= maxDate && t.status === 'active');
-  const todayContainer = document.getElementById('dashboard-today-tasks');
-  const todayEmpty = document.getElementById('dashboard-today-empty');
-  const todayCount = document.getElementById('today-count');
-  
-  todayCount.textContent = upcomingTasks.length;
-  
-  if (upcomingTasks.length === 0) {
-    todayContainer.innerHTML = '';
-    todayEmpty.classList.remove('hidden');
-  } else {
-    todayEmpty.classList.add('hidden');
-    todayContainer.innerHTML = upcomingTasks.map(t => renderTaskItem(t, projects)).join('');
-    attachTaskListeners(todayContainer);
-  }
-  
-  // Overdue
-  const overdue = tasks.filter(t => t.dueDate && isOverdue(t.dueDate) && t.status === 'active');
-  const overdueSection = document.getElementById('dashboard-overdue-section');
-  const overdueContainer = document.getElementById('dashboard-overdue-tasks');
-  const overdueCount = document.getElementById('overdue-count');
-  
-  if (overdue.length > 0) {
-    overdueSection.classList.remove('hidden');
-    overdueCount.textContent = overdue.length;
-    overdueContainer.innerHTML = overdue.slice(0, 3).map(t => renderTaskItem(t, projects)).join('');
-    attachTaskListeners(overdueContainer);
-  } else {
-    overdueSection.classList.add('hidden');
-  }
-  
-  // Pinned notes
-  const pinned = notes.filter(n => n.isPinned).slice(0, 4);
-  const pinnedContainer = document.getElementById('dashboard-pinned-notes');
-  const pinnedEmpty = document.getElementById('dashboard-pinned-empty');
-  
-  if (pinned.length === 0) {
-    pinnedContainer.innerHTML = '';
-    pinnedEmpty.classList.remove('hidden');
-  } else {
-    pinnedEmpty.classList.add('hidden');
-    pinnedContainer.innerHTML = pinned.map(n => renderNoteCard(n)).join('');
-    attachNoteListeners(pinnedContainer);
-  }
-  
-  // Recent projects (horizontal scroll)
-  const activeProjects = projects.filter(p => !p.isArchived);
-  const projectsContainer = document.getElementById('dashboard-recent-projects');
-  const projectsEmpty = document.getElementById('dashboard-projects-empty');
-  
-  if (activeProjects.length === 0) {
-    projectsContainer.innerHTML = '';
-    projectsEmpty.classList.remove('hidden');
-  } else {
-    projectsEmpty.classList.add('hidden');
-    projectsContainer.innerHTML = activeProjects.map(p => renderProjectCard(p, tasks)).join('');
-    attachProjectListeners(projectsContainer);
-  }
-}
-
-// ===== Task Rendering =====
-function renderTaskItem(task, projects = []) {
-  const project = projects.find(p => p.id === task.projectId);
-  const priorityClass = task.priority || 'medium';
-  const isOverdueTask = task.dueDate && isOverdue(task.dueDate) && task.status === 'active';
-  
-  let timeStr = '';
-  if (task.startTime) {
-    timeStr = task.endTime ? `${task.startTime}–${task.endTime}` : task.startTime;
-  }
-  
-  let dateStr = '';
-  if (task.dueDate) {
-    dateStr = isToday(task.dueDate) ? 'Сегодня' : formatDate(task.dueDate);
-    if (isOverdueTask) dateStr = `<span class="overdue">${dateStr}</span>`;
-  }
-  
-  const metaItems = [];
-  if (dateStr) metaItems.push(dateStr);
-  if (timeStr) metaItems.push(`<span class="task-time">${timeStr}</span>`);
-  if (task.repeat !== 'none') metaItems.push('<span class="task-repeat">↻</span>');
-  
-  const subtaskCount = task.subtasks?.length || 0;
-  const subtaskDone = task.subtasks?.filter(s => s.completed).length || 0;
-  
-  return `
-    <div class="task-item priority-${priorityClass}" data-id="${task.id}" data-status="${task.status}">
-      <div class="task-swipe-bg complete">Выполнить</div>
-      <div class="task-swipe-bg delete">Удалить</div>
-      <div class="task-checkbox ${task.status === 'completed' ? 'checked' : ''}" data-action="toggle"></div>
-      <div class="task-info">
-        <div class="task-title">${sanitizeHTML(task.title)}</div>
-        ${task.description ? `<div class="task-desc-preview">${sanitizeHTML(task.description)}</div>` : ''}
-        <div class="task-meta">
-          <span class="task-priority ${priorityClass}"></span>
-          ${metaItems.join(' • ')}
-          ${project ? `<span class="task-project-badge" style="color:${project.color}">${project.icon} ${sanitizeHTML(project.name)}</span>` : ''}
-          ${subtaskCount > 0 ? `<span class="subtask-counter" data-action="toggle-subtasks">${subtaskDone}/${subtaskCount}</span>` : ''}
-        </div>
-        ${task.tags?.length ? `<div class="task-tags">${task.tags.map(tag => `<span class="task-tag">${sanitizeHTML(tag)}</span>`).join('')}</div>` : ''}
-        ${subtaskCount > 0 ? `<div class="task-subtasks-inline">${task.subtasks.map(s => `<div class="subtask-item"><div class="subtask-check ${s.completed ? 'checked' : ''}" data-subtask-id="${s.id}"></div><span class="subtask-title ${s.completed ? 'completed' : ''}">${sanitizeHTML(s.title)}</span></div>`).join('')}</div>` : ''}
-      </div>
-    </div>
-  `;
-}
-
-function renderNoteCard(note) {
-  const plainText = note.content.replace(/<[^>]+>/g, ' ').trim();
-  const preview = plainText.slice(0, 120) + (plainText.length > 120 ? '...' : '');
-  
-  return `
-    <div class="note-card ${note.isPinned ? 'pinned' : ''}" data-id="${note.id}">
-      <div class="note-card-header">
-        <div class="note-card-title">${sanitizeHTML(note.title || 'Без названия')}</div>
-        ${note.isFavorite ? '<span class="note-card-fav">★</span>' : ''}
-      </div>
-      <div class="note-card-preview">${sanitizeHTML(preview)}</div>
-      <div class="note-card-meta">
-        <span>${formatDate(note.updatedAt)}</span>
-        ${note.tags?.length ? note.tags.map(t => `<span class="tag">${sanitizeHTML(t)}</span>`).join('') : ''}
-      </div>
-    </div>
-  `;
-}
-
-function renderProjectCard(project, tasks = []) {
-  const projectTasks = tasks.filter(t => t.projectId === project.id && t.status === 'active');
-  const completedTasks = tasks.filter(t => t.projectId === project.id && t.status === 'completed');
-  const total = projectTasks.length + completedTasks.length;
-  const progress = total > 0 ? Math.round((completedTasks.length / total) * 100) : 0;
-  
-  return `
-    <div class="project-card ${project.isArchived ? 'archived' : ''}" data-id="${project.id}">
-      <div class="project-icon" style="background:${project.color}20;color:${project.color}">${project.icon || '📁'}</div>
-      <div class="project-info">
-        <div class="project-name">${sanitizeHTML(project.name)}</div>
-        <div class="project-desc">${sanitizeHTML(project.description || '')}</div>
-      </div>
-      <div class="project-progress">
-        <div class="project-progress-bar">
-          <div class="project-progress-fill" style="width:${progress}%;background:${project.color}"></div>
-        </div>
-        <div class="project-progress-text">${progress}%</div>
-      </div>
-    </div>
-  `;
-}
-
-// ===== Attach Task Listeners (swipe, subtask expand, edit) =====
-function attachTaskListeners(container) {
-  container.querySelectorAll('.task-item').forEach(item => {
-    // Toggle complete
-    const checkbox = item.querySelector('.task-checkbox');
-    if (checkbox) {
-      checkbox.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const id = item.dataset.id;
-        const task = await dbGet('tasks', id);
-        if (!task) return;
-        
-        if (task.status === 'completed') {
-          task.status = 'active';
-          task.completedAt = null;
-        } else {
-          task.status = 'completed';
-          task.completedAt = new Date().toISOString();
-          if (task.repeat !== 'none') await createRepeatedTask(task);
-        }
-        task.updatedAt = new Date().toISOString();
-        await dbPut('tasks', task);
-        
-        showToast(task.status === 'completed' ? 'Задача выполнена!' : 'Задача активна', 'success');
-        renderCurrentView();
-      });
-    }
-    
-    // Subtask counter click – expand/collapse inline subtasks
-    const subtaskCounter = item.querySelector('.subtask-counter');
-    if (subtaskCounter) {
-      subtaskCounter.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const subtasksInline = item.querySelector('.task-subtasks-inline');
-        if (subtasksInline) {
-          subtasksInline.classList.toggle('open');
-        }
-      });
-    }
-    
-    // Subtask check click inside inline subtasks
-    item.querySelectorAll('.subtask-check').forEach(subCheck => {
-      subCheck.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const subtaskId = subCheck.dataset.subtaskId;
-        if (!subtaskId) return;
-        const id = item.dataset.id;
-        const task = await dbGet('tasks', id);
-        if (!task || !task.subtasks) return;
-        const subtask = task.subtasks.find(s => s.id === subtaskId);
-        if (subtask) {
-          subtask.completed = !subtask.completed;
-          subtask.updatedAt = new Date().toISOString();
-          await dbPut('tasks', task);
-          renderCurrentView();
-        }
-      });
-    });
-    
-    // Open edit modal on tap
-    item.addEventListener('click', async (e) => {
-      if (e.target.closest('.task-checkbox') || e.target.closest('.subtask-counter') || e.target.closest('.subtask-check') || e.target.closest('.task-swipe-bg')) return;
-      const id = item.dataset.id;
-      const task = await dbGet('tasks', id);
-      if (task) openTaskModal(task);
-    });
-    
-    // Swipe gestures
-    let startX = 0;
-    let currentX = 0;
-    let isSwiping = false;
-    
-    item.addEventListener('touchstart', (e) => {
-      startX = e.touches[0].clientX;
-      currentX = startX;
-      isSwiping = true;
-      item.classList.add('swiping');
-    }, { passive: true });
-    
-    item.addEventListener('touchmove', (e) => {
-      if (!isSwiping) return;
-      currentX = e.touches[0].clientX;
-      const diff = currentX - startX;
-      const limitedDiff = Math.max(-120, Math.min(120, diff));
-      item.style.transform = `translateX(${limitedDiff}px)`;
-      
-      if (diff > 50) item.classList.add('swiping-right');
-      else item.classList.remove('swiping-right');
-      
-      if (diff < -50) item.classList.add('swiping-left');
-      else item.classList.remove('swiping-left');
-    }, { passive: true });
-    
-    item.addEventListener('touchend', async () => {
-      if (!isSwiping) return;
-      isSwiping = false;
-      item.classList.remove('swiping');
-      const diff = currentX - startX;
-      
-      if (diff > 100) {
-        const id = item.dataset.id;
-        const task = await dbGet('tasks', id);
-        if (task && task.status === 'active') {
-          task.status = 'completed';
-          task.completedAt = new Date().toISOString();
-          if (task.repeat !== 'none') await createRepeatedTask(task);
-          task.updatedAt = new Date().toISOString();
-          await dbPut('tasks', task);
-          showToast('Задача выполнена!', 'success');
-          renderCurrentView();
-        }
-      } else if (diff < -100) {
-        const id = item.dataset.id;
-        const task = await dbGet('tasks', id);
-        if (task) {
-          task.status = 'deleted';
-          task.updatedAt = new Date().toISOString();
-          await dbPut('tasks', task);
-          showToast('Задача удалена', 'info');
-          renderCurrentView();
-        }
-      }
-      
-      item.style.transform = '';
-      item.classList.remove('swiping-right', 'swiping-left');
-    });
-  });
-}
-
-// ===== Task List Rendering with "Все" tab =====
-async function renderTasks() {
-  const tasks = await dbGetAll('tasks');
-  const projects = await dbGetAll('projects');
-  const today = formatDateISO(new Date());
-  const daysRange = parseInt(await getSetting('daysRange', '2'));
-  const maxDate = addDays(today, daysRange - 1);
-  
-  // All tasks (active, sorted by dueDate then created)
-  const allActive = tasks.filter(t => t.status === 'active').sort((a, b) => {
-    if (!a.dueDate && !b.dueDate) return new Date(b.createdAt) - new Date(a.createdAt);
-    if (!a.dueDate) return 1;
-    if (!b.dueDate) return -1;
-    return new Date(a.dueDate) - new Date(b.dueDate);
-  });
-  
-  // Today
-  const todayTasks = tasks.filter(t => t.dueDate === today && t.status === 'active');
-  // Upcoming (next N days)
-  const upcomingTasks = tasks.filter(t => t.dueDate > today && t.dueDate <= maxDate && t.status === 'active');
-  // Someday (no date)
-  const somedayTasks = tasks.filter(t => !t.dueDate && t.status === 'active');
-  
-  const tabs = {
-    all: allActive,
-    today: todayTasks,
-    upcoming: upcomingTasks,
-    someday: somedayTasks
-  };
-  
-  for (const [tab, items] of Object.entries(tabs)) {
-    const container = document.getElementById(`${tab}-tasks`);
-    const empty = document.getElementById(`${tab}-empty`);
-    if (!container) continue;
-    
-    if (items.length === 0) {
-      container.innerHTML = '';
-      empty.classList.remove('hidden');
-    } else {
-      empty.classList.add('hidden');
-      container.innerHTML = items.map(t => renderTaskItem(t, projects)).join('');
-      attachTaskListeners(container);
-    }
-  }
-}
-
-// ===== Calendar =====
-let calCurrentDate = new Date();
-
-async function renderCalendar() {
-  const year = calCurrentDate.getFullYear();
-  const month = calCurrentDate.getMonth();
-  
-  document.getElementById('cal-month-year').textContent = getMonthName(year, month);
-  
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const startPadding = (firstDay.getDay() + 6) % 7; // Monday start
-  
-  const tasks = await dbGetAll('tasks');
-  const grid = document.getElementById('calendar-grid');
-  
-  let html = '';
-  const dayNames = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
-  dayNames.forEach(d => html += `<div class="cal-day-header">${d}</div>`);
-  
-  for (let i = 0; i < startPadding; i++) {
-    html += `<div class="cal-day other-month"></div>`;
-  }
-  
-  const today = new Date();
-  for (let day = 1; day <= lastDay.getDate(); day++) {
-    const dateStr = formatDateISO(new Date(year, month, day));
-    const isToday = today.toDateString() === new Date(year, month, day).toDateString();
-    const dayTasks = tasks.filter(t => t.dueDate === dateStr && t.status === 'active');
-    
-    const dots = dayTasks.slice(0, 3).map(t => {
-      const colors = { high: '#ef4444', medium: '#f59e0b', low: '#10b981' };
-      return `<span class="cal-dot" style="background:${colors[t.priority] || colors.medium}"></span>`;
-    }).join('');
-    
-    html += `
-      <div class="cal-day ${isToday ? 'today' : ''} ${dayTasks.length ? 'has-tasks' : ''}" data-date="${dateStr}">
-        <span>${day}</span>
-        ${dots ? `<div class="cal-day-dots">${dots}</div>` : ''}
-      </div>
-    `;
-  }
-  
-  grid.innerHTML = html;
-  
-  grid.querySelectorAll('.cal-day[data-date]').forEach(day => {
-    day.addEventListener('click', () => openDaySheet(day.dataset.date));
-  });
-}
-
-document.getElementById('cal-prev').addEventListener('click', () => {
-  calCurrentDate.setMonth(calCurrentDate.getMonth() - 1);
-  renderCalendar();
-});
-
-document.getElementById('cal-next').addEventListener('click', () => {
-  calCurrentDate.setMonth(calCurrentDate.getMonth() + 1);
-  renderCalendar();
-});
-
-document.getElementById('cal-today').addEventListener('click', () => {
-  calCurrentDate = new Date();
-  renderCalendar();
-});
-
-// ===== Day Sheet =====
-async function openDaySheet(date) {
-  const tasks = await dbGetAll('tasks');
-  const projects = await dbGetAll('projects');
-  const dayTasks = tasks.filter(t => t.dueDate === date && t.status === 'active');
-  
-  document.getElementById('day-sheet-title').textContent = formatDate(date);
-  const container = document.getElementById('day-sheet-tasks');
-  const empty = document.getElementById('day-sheet-empty');
-  
-  if (dayTasks.length === 0) {
-    container.innerHTML = '';
-    empty.classList.remove('hidden');
-  } else {
-    empty.classList.add('hidden');
-    container.innerHTML = dayTasks.map(t => renderTaskItem(t, projects)).join('');
-    attachTaskListeners(container);
-  }
-  
-  document.getElementById('day-sheet-add-btn').onclick = () => {
-    closeModal('day-sheet');
-    openTaskModal(null, { dueDate: date });
-  };
-  
-  document.getElementById('day-sheet').classList.add('active');
-}
-
-document.querySelector('#day-sheet .sheet-close').addEventListener('click', () => {
-  document.getElementById('day-sheet').classList.remove('active');
-});
-
-// ===== Notes =====
-async function renderNotes() {
-  const notes = await dbGetAll('notes');
-  const searchTerm = document.getElementById('notes-search-input').value.toLowerCase();
-  
-  let filtered = notes;
-  if (searchTerm) {
-    filtered = notes.filter(n => 
-      (n.title || '').toLowerCase().includes(searchTerm) ||
-      (n.content || '').toLowerCase().includes(searchTerm) ||
-      (n.tags || []).some(t => t.toLowerCase().includes(searchTerm))
+  const settingsBtn =
+    document.getElementById(
+      'settings-open-btn'
     );
-  }
-  
-  filtered.sort((a, b) => {
-    if (a.isPinned !== b.isPinned) return b.isPinned ? 1 : -1;
-    return new Date(b.updatedAt) - new Date(a.updatedAt);
-  });
-  
-  const container = document.getElementById('notes-grid');
-  const empty = document.getElementById('notes-empty');
-  
-  if (filtered.length === 0) {
-    container.innerHTML = '';
-    empty.classList.remove('hidden');
-  } else {
-    empty.classList.add('hidden');
-    container.innerHTML = filtered.map(n => renderNoteCard(n)).join('');
-    attachNoteListeners(container);
-  }
-}
 
-document.getElementById('notes-search-input').addEventListener('input', debounce(() => renderNotes(), 300));
-
-// ===== Projects =====
-async function renderProjects() {
-  const projects = await dbGetAll('projects');
-  const tasks = await dbGetAll('tasks');
-  
-  const active = projects.filter(p => !p.isArchived);
-  const archived = projects.filter(p => p.isArchived);
-  
-  const container = document.getElementById('projects-list');
-  const empty = document.getElementById('projects-empty');
-  
-  if (active.length === 0 && archived.length === 0) {
-    container.innerHTML = '';
-    empty.classList.remove('hidden');
+  if (!settingsBtn) {
     return;
   }
-  
-  empty.classList.add('hidden');
-  let html = active.map(p => renderProjectCard(p, tasks)).join('');
-  
-  if (archived.length > 0) {
-    html += `<h3 class="section-title" style="margin-top:24px;opacity:0.6;">Архивные</h3>`;
-    html += archived.map(p => renderProjectCard(p, tasks)).join('');
-  }
-  
-  container.innerHTML = html;
-  attachProjectListeners(container);
-}
 
-// ===== Archive =====
-async function renderArchive() {
-  const tasks = await dbGetAll('tasks');
-  const projects = await dbGetAll('projects');
-  
-  const completed = tasks.filter(t => t.status === 'completed');
-  const trash = tasks.filter(t => t.status === 'deleted');
-  
-  const compContainer = document.getElementById('completed-tasks');
-  const compEmpty = document.getElementById('completed-empty');
-  
-  if (completed.length === 0) {
-    compContainer.innerHTML = '';
-    compEmpty.classList.remove('hidden');
-  } else {
-    compEmpty.classList.add('hidden');
-    compContainer.innerHTML = completed.map(t => renderTaskItem(t, projects)).join('');
-    attachTaskListeners(compContainer);
-  }
-  
-  const trashContainer = document.getElementById('trash-tasks');
-  const trashEmpty = document.getElementById('trash-empty');
-  
-  if (trash.length === 0) {
-    trashContainer.innerHTML = '';
-    trashEmpty.classList.remove('hidden');
-  } else {
-    trashEmpty.classList.add('hidden');
-    trashContainer.innerHTML = trash.map(t => renderTaskItem(t, projects)).join('');
-    attachTaskListeners(trashContainer);
-  }
-}
+  settingsBtn.addEventListener(
+    'click',
+    () => {
 
-document.getElementById('clear-trash-btn').addEventListener('click', () => {
-  showConfirm('Очистить корзину? Удалённые задачи будут безвозвратно удалены.', async () => {
-    const tasks = await dbGetAll('tasks');
-    for (const t of tasks.filter(t => t.status === 'deleted')) {
-      await dbDelete('tasks', t.id);
-    }
-    renderArchive();
-    showToast('Корзина очищена', 'success');
-  });
-});
+      const overlay =
+        createModal(`
+          <div class="section-title-row">
+            <h2>Настройки</h2>
+          </div>
 
-// ===== Editing State =====
-let editingTask = null;
-let editingNote = null;
-let editingProject = null;
-let currentSubtasks = [];
-let currentTags = [];
-let currentNoteTags = [];
+          <div class="settings-group">
 
-// ===== Task Modal =====
-function openTaskModal(task = null, defaults = {}) {
-  editingTask = task;
-  currentSubtasks = task ? clone(task.subtasks || []) : [];
-  currentTags = task ? clone(task.tags || []) : [];
-  
-  document.getElementById('task-modal-title').textContent = task ? 'Редактировать задачу' : 'Новая задача';
-  document.getElementById('task-title').value = task?.title || '';
-  document.getElementById('task-desc').value = task?.description || '';
-  document.getElementById('task-date').value = task?.dueDate || defaults.dueDate || '';
-  document.getElementById('task-start-time').value = task?.startTime || '';
-  document.getElementById('task-end-time').value = task?.endTime || '';
-  document.getElementById('task-repeat').value = task?.repeat || 'none';
-  
-  document.querySelectorAll('.priority-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.priority === (task?.priority || 'medium'));
-  });
-  
-  populateProjectSelect('task-project', task?.projectId);
-  renderSubtasks();
-  renderTaskTags();
-  
-  document.getElementById('task-delete-btn').classList.toggle('hidden', !task);
-  
-  openModal('task-modal');
-}
+            <div class="settings-title">
+              Оформление
+            </div>
 
-async function populateProjectSelect(selectId, selectedId) {
-  const projects = await dbGetAll('projects');
-  const select = document.getElementById(selectId);
-  select.innerHTML = '<option value="">Без проекта</option>' + 
-    projects.filter(p => !p.isArchived).map(p => 
-      `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${sanitizeHTML(p.name)}</option>`
-    ).join('');
-}
+            <div class="settings-list">
 
-function renderSubtasks() {
-  const container = document.getElementById('task-subtasks');
-  container.innerHTML = currentSubtasks.map((s, i) => `
-    <div class="subtask-item" data-index="${i}">
-      <div class="subtask-check ${s.completed ? 'checked' : ''}" data-index="${i}"></div>
-      <span class="subtask-title ${s.completed ? 'completed' : ''}">${sanitizeHTML(s.title)}</span>
-      <span class="subtask-delete" data-index="${i}">✕</span>
-    </div>
-  `).join('');
-  
-  container.querySelectorAll('.subtask-check').forEach(el => {
-    el.addEventListener('click', () => {
-      const idx = parseInt(el.dataset.index);
-      currentSubtasks[idx].completed = !currentSubtasks[idx].completed;
-      renderSubtasks();
-    });
-  });
-  
-  container.querySelectorAll('.subtask-delete').forEach(el => {
-    el.addEventListener('click', () => {
-      const idx = parseInt(el.dataset.index);
-      currentSubtasks.splice(idx, 1);
-      renderSubtasks();
-    });
-  });
-}
+              <div class="settings-item">
 
-function renderTaskTags() {
-  const container = document.getElementById('task-tags');
-  container.innerHTML = currentTags.map((tag, i) => `
-    <span class="tag">${sanitizeHTML(tag)}<span class="tag-remove" data-index="${i}">✕</span></span>
-  `).join('');
-  
-  container.querySelectorAll('.tag-remove').forEach(el => {
-    el.addEventListener('click', () => {
-      currentTags.splice(parseInt(el.dataset.index), 1);
-      renderTaskTags();
-    });
-  });
-}
+                <div
+                  class="settings-item-left"
+                >
 
-document.getElementById('subtask-add-btn').addEventListener('click', () => {
-  const input = document.getElementById('subtask-input');
-  const title = input.value.trim();
-  if (!title) return;
-  currentSubtasks.push({ id: uuid(), title, completed: false });
-  input.value = '';
-  renderSubtasks();
-});
+                  <div
+                    class="settings-item-title"
+                  >
+                    Светлая тема
+                  </div>
 
-document.getElementById('subtask-input').addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') document.getElementById('subtask-add-btn').click();
-});
+                  <div
+                    class="
+                      settings-item-subtitle
+                    "
+                  >
+                    Переключение темы
+                  </div>
 
-document.getElementById('tag-add-btn').addEventListener('click', async () => {
-  const input = document.getElementById('tag-input');
-  const name = input.value.trim();
-  if (!name) return;
-  if (currentTags.includes(name)) {
-    showToast('Тег уже добавлен', 'error');
-    return;
-  }
-  currentTags.push(name);
-  
-  const allTags = await dbGetAll('tags');
-  if (!allTags.find(t => t.name.toLowerCase() === name.toLowerCase())) {
-    await dbAdd('tags', { 
-      id: uuid(), 
-      name, 
-      color: PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)], 
-      usageCount: 1 
-    });
-  }
-  
-  input.value = '';
-  renderTaskTags();
-});
+                </div>
 
-document.getElementById('tag-input').addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') document.getElementById('tag-add-btn').click();
-});
+                <label class="switch">
 
-document.querySelectorAll('.priority-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.priority-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-  });
-});
+                  <input
+                    id="theme-switch"
+                    type="checkbox"
+                    ${
+                      state.settings.theme
+                      === 'light'
+                        ? 'checked'
+                        : ''
+                    }
+                  >
 
-document.getElementById('task-save-btn').addEventListener('click', async () => {
-  const title = document.getElementById('task-title').value.trim();
-  if (!title) {
-    showToast('Введите название задачи', 'error');
-    return;
-  }
-  
-  const priority = document.querySelector('.priority-btn.active')?.dataset.priority || 'medium';
-  const now = new Date().toISOString();
-  
-  const taskData = {
-    id: editingTask?.id || uuid(),
-    title,
-    description: document.getElementById('task-desc').value.trim(),
-    projectId: document.getElementById('task-project').value || null,
-    priority,
-    dueDate: document.getElementById('task-date').value || null,
-    startTime: document.getElementById('task-start-time').value || null,
-    endTime: document.getElementById('task-end-time').value || null,
-    repeat: document.getElementById('task-repeat').value,
-    repeatConfig: null,
-    subtasks: currentSubtasks,
-    tags: currentTags,
-    status: editingTask?.status || 'active',
-    createdAt: editingTask?.createdAt || now,
-    completedAt: editingTask?.completedAt || null,
-    updatedAt: now
-  };
-  
-  await dbPut('tasks', taskData);
-  closeModal('task-modal');
-  showToast(editingTask ? 'Задача обновлена' : 'Задача создана', 'success');
-  
-  renderCurrentView();
-});
+                  <span
+                    class="switch-slider"
+                  ></span>
 
-document.getElementById('task-delete-btn').addEventListener('click', () => {
-  if (!editingTask) return;
-  showConfirm('Удалить задачу?', async () => {
-    editingTask.status = 'deleted';
-    editingTask.updatedAt = new Date().toISOString();
-    await dbPut('tasks', editingTask);
-    closeModal('task-modal');
-    showToast('Задача удалена', 'info');
-    renderCurrentView();
-  });
-});
+                </label>
 
-// ===== Note Modal =====
-function openNoteModal(note = null) {
-  editingNote = note;
-  currentNoteTags = note ? clone(note.tags || []) : [];
-  
-  document.getElementById('note-modal-title').textContent = note ? 'Редактировать заметку' : 'Новая заметка';
-  document.getElementById('note-title').value = note?.title || '';
-  document.getElementById('note-editor').innerHTML = note?.content || '';
-  
-  document.getElementById('note-pin-btn').classList.toggle('active', note?.isPinned);
-  document.getElementById('note-fav-btn').classList.toggle('active', note?.isFavorite);
-  
-  populateProjectSelect('note-project', note?.projectId);
-  renderNoteTags();
-  
-  document.getElementById('note-delete-btn').classList.toggle('hidden', !note);
-  
-  openModal('note-modal');
-}
+              </div>
 
-function renderNoteTags() {
-  const container = document.getElementById('note-tags');
-  container.innerHTML = currentNoteTags.map((tag, i) => `
-    <span class="tag">${sanitizeHTML(tag)}<span class="tag-remove" data-index="${i}">✕</span></span>
-  `).join('');
-  
-  container.querySelectorAll('.tag-remove').forEach(el => {
-    el.addEventListener('click', () => {
-      currentNoteTags.splice(parseInt(el.dataset.index), 1);
-      renderNoteTags();
-    });
-  });
-}
+              <div class="settings-item">
 
-document.getElementById('note-tag-add-btn').addEventListener('click', async () => {
-  const input = document.getElementById('note-tag-input');
-  const name = input.value.trim();
-  if (!name) return;
-  if (currentNoteTags.includes(name)) {
-    showToast('Тег уже добавлен', 'error');
-    return;
-  }
-  currentNoteTags.push(name);
-  
-  const allTags = await dbGetAll('tags');
-  if (!allTags.find(t => t.name.toLowerCase() === name.toLowerCase())) {
-    await dbAdd('tags', { 
-      id: uuid(), 
-      name, 
-      color: PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)], 
-      usageCount: 1 
-    });
-  }
-  
-  input.value = '';
-  renderNoteTags();
-});
+                <div
+                  class="settings-item-left"
+                >
 
-document.getElementById('note-tag-input').addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') document.getElementById('note-tag-add-btn').click();
-});
+                  <div
+                    class="settings-item-title"
+                  >
+                    Accent
+                  </div>
 
-document.getElementById('note-pin-btn').addEventListener('click', function() {
-  this.classList.toggle('active');
-});
+                  <div
+                    class="
+                      settings-item-subtitle
+                    "
+                  >
+                    Цвет интерфейса
+                  </div>
 
-document.getElementById('note-fav-btn').addEventListener('click', function() {
-  this.classList.toggle('active');
-});
+                </div>
 
-// Rich Editor Toolbar (modern approach)
-document.querySelectorAll('.toolbar-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const cmd = btn.dataset.cmd;
-    const editor = document.getElementById('note-editor');
-    editor.focus();
-    
-    switch(cmd) {
-      case 'h1': insertHeading(editor, 'h1'); break;
-      case 'h2': insertHeading(editor, 'h2'); break;
-      case 'bold': toggleFormat(editor, 'b'); break;
-      case 'italic': toggleFormat(editor, 'i'); break;
-      case 'strike': toggleFormat(editor, 's'); break;
-      case 'ul': insertList(editor, 'ul'); break;
-      case 'ol': insertList(editor, 'ol'); break;
-      case 'check': insertCheckbox(editor); break;
-      case 'quote': insertQuote(editor); break;
-      case 'hr': insertHR(editor); break;
-    }
-  });
-});
+                <div class="select-wrap">
 
-function insertHeading(editor, tag) {
-  const selection = window.getSelection();
-  if (!selection.rangeCount) return;
-  const range = selection.getRangeAt(0);
-  const selectedText = range.toString();
-  const heading = document.createElement(tag);
-  heading.textContent = selectedText || 'Заголовок';
-  range.deleteContents();
-  range.insertNode(heading);
-  const br = document.createElement('br');
-  heading.after(br);
-  const newRange = document.createRange();
-  newRange.setStartAfter(br);
-  newRange.collapse(true);
-  selection.removeAllRanges();
-  selection.addRange(newRange);
-}
+                  <select
+                    id="accent-select"
+                    class="form-select"
+                  >
 
-function toggleFormat(editor, tag) {
-  const selection = window.getSelection();
-  if (!selection.rangeCount) return;
-  const range = selection.getRangeAt(0);
-  const selectedText = range.toString();
-  let parent = range.commonAncestorContainer;
-  if (parent.nodeType === 3) parent = parent.parentElement;
-  const existing = parent.closest(tag);
-  if (existing) {
-    const text = document.createTextNode(existing.textContent);
-    existing.replaceWith(text);
-  } else {
-    const el = document.createElement(tag);
-    el.textContent = selectedText || 'текст';
-    range.deleteContents();
-    range.insertNode(el);
-  }
-}
+                    <option value="ocean">
+                      Ocean
+                    </option>
 
-function insertList(editor, type) {
-  const selection = window.getSelection();
-  const list = document.createElement(type);
-  const li = document.createElement('li');
-  li.textContent = 'Пункт';
-  list.appendChild(li);
-  if (selection.rangeCount) {
-    const range = selection.getRangeAt(0);
-    range.deleteContents();
-    range.insertNode(list);
-  } else {
-    editor.appendChild(list);
-  }
-}
+                    <option value="sunset">
+                      Sunset
+                    </option>
 
-function insertCheckbox(editor) {
-  const selection = window.getSelection();
-  const div = document.createElement('div');
-  div.innerHTML = '<input type="checkbox"> <span>Задача</span>';
-  if (selection.rangeCount) {
-    const range = selection.getRangeAt(0);
-    range.deleteContents();
-    range.insertNode(div);
-  } else {
-    editor.appendChild(div);
-  }
-}
+                    <option value="forest">
+                      Forest
+                    </option>
 
-function insertQuote(editor) {
-  const selection = window.getSelection();
-  const blockquote = document.createElement('blockquote');
-  blockquote.textContent = 'Цитата';
-  if (selection.rangeCount) {
-    const range = selection.getRangeAt(0);
-    range.deleteContents();
-    range.insertNode(blockquote);
-  } else {
-    editor.appendChild(blockquote);
-  }
-}
+                    <option value="neon">
+                      Neon
+                    </option>
 
-function insertHR(editor) {
-  const hr = document.createElement('hr');
-  editor.appendChild(hr);
-}
+                  </select>
 
-// Save Note
-document.getElementById('note-save-btn').addEventListener('click', async () => {
-  const title = document.getElementById('note-title').value.trim();
-  if (!title) {
-    showToast('Введите заголовок заметки', 'error');
-    return;
-  }
-  
-  const now = new Date().toISOString();
-  const noteData = {
-    id: editingNote?.id || uuid(),
-    title,
-    content: document.getElementById('note-editor').innerHTML,
-    projectId: document.getElementById('note-project').value || null,
-    tags: currentNoteTags,
-    isPinned: document.getElementById('note-pin-btn').classList.contains('active'),
-    isFavorite: document.getElementById('note-fav-btn').classList.contains('active'),
-    createdAt: editingNote?.createdAt || now,
-    updatedAt: now
-  };
-  
-  await dbPut('notes', noteData);
-  closeModal('note-modal');
-  showToast(editingNote ? 'Заметка обновлена' : 'Заметка создана', 'success');
-  renderCurrentView();
-});
+                </div>
 
-document.getElementById('note-delete-btn').addEventListener('click', () => {
-  if (!editingNote) return;
-  showConfirm('Удалить заметку?', async () => {
-    await dbDelete('notes', editingNote.id);
-    closeModal('note-modal');
-    showToast('Заметка удалена', 'info');
-    renderCurrentView();
-  });
-});
+              </div>
 
-// ===== Project Modal =====
-function openProjectModal(project = null) {
-  editingProject = project;
-  
-  document.getElementById('project-modal-title').textContent = project ? 'Редактировать проект' : 'Новый проект';
-  document.getElementById('project-name').value = project?.name || '';
-  document.getElementById('project-desc').value = project?.description || '';
-  document.getElementById('project-icon').value = project?.icon || '';
-  
-  document.querySelectorAll('.color-option').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.color === (project?.color || '#667eea'));
-  });
-  
-  document.getElementById('project-delete-btn').classList.toggle('hidden', !project);
-  
-  openModal('project-modal');
-}
+            </div>
 
-document.querySelectorAll('.color-option').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.color-option').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-  });
-});
+          </div>
+        `);
 
-document.getElementById('project-save-btn').addEventListener('click', async () => {
-  const name = document.getElementById('project-name').value.trim();
-  if (!name) {
-    showToast('Введите название проекта', 'error');
-    return;
-  }
-  
-  const colorBtn = document.querySelector('.color-option.active');
-  const now = new Date().toISOString();
-  
-  const projectData = {
-    id: editingProject?.id || uuid(),
-    name,
-    description: document.getElementById('project-desc').value.trim(),
-    color: colorBtn?.dataset.color || '#667eea',
-    icon: document.getElementById('project-icon').value.trim() || '📁',
-    isArchived: editingProject?.isArchived || false,
-    createdAt: editingProject?.createdAt || now,
-    updatedAt: now
-  };
-  
-  await dbPut('projects', projectData);
-  closeModal('project-modal');
-  showToast(editingProject ? 'Проект обновлён' : 'Проект создан', 'success');
-  renderCurrentView();
-});
+      const themeSwitch =
+        overlay.querySelector(
+          '#theme-switch'
+        );
 
-document.getElementById('project-delete-btn').addEventListener('click', () => {
-  if (!editingProject) return;
-  showConfirm('Удалить проект? Все связанные задачи останутся без проекта.', async () => {
-    const tasks = await dbGetAll('tasks');
-    for (const t of tasks.filter(t => t.projectId === editingProject.id)) {
-      t.projectId = null;
-      t.updatedAt = new Date().toISOString();
-      await dbPut('tasks', t);
-    }
-    await dbDelete('projects', editingProject.id);
-    closeModal('project-modal');
-    showToast('Проект удалён', 'info');
-    renderCurrentView();
-  });
-});
+      const accentSelect =
+        overlay.querySelector(
+          '#accent-select'
+        );
 
-// Modal close buttons
-document.querySelectorAll('.modal-close').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const modal = btn.closest('.modal');
-    if (modal) modal.classList.remove('active');
-  });
-});
+      accentSelect.value =
+        state.settings.accent;
 
-// ===== Repeat Task Creation =====
-async function createRepeatedTask(originalTask) {
-  let newDate = originalTask.dueDate;
-  if (originalTask.repeat === 'daily') newDate = addDays(originalTask.dueDate, 1);
-  else if (originalTask.repeat === 'weekly') newDate = addDays(originalTask.dueDate, 7);
-  else if (originalTask.repeat === 'monthly') newDate = addMonths(originalTask.dueDate, 1);
-  
-  const now = new Date().toISOString();
-  const newTask = {
-    ...clone(originalTask),
-    id: uuid(),
-    status: 'active',
-    dueDate: newDate,
-    completedAt: null,
-    createdAt: now,
-    updatedAt: now
-  };
-  
-  await dbAdd('tasks', newTask);
-  showToast('Создана повторяющаяся задача', 'info');
-}
+      themeSwitch?.addEventListener(
+        'change',
+        async () => {
 
-function renderCurrentView() {
-  if (currentView === 'dashboard') renderDashboard();
-  if (currentView === 'tasks') renderTasks();
-  if (currentView === 'calendar') renderCalendar();
-  if (currentView === 'notes') renderNotes();
-  if (currentView === 'projects') renderProjects();
-  if (currentView === 'archive') renderArchive();
-}
+          await updateTheme(
+            themeSwitch.checked
+              ? 'light'
+              : 'dark'
+          );
 
-// ===== Note Listeners =====
-function attachNoteListeners(container) {
-  container.querySelectorAll('.note-card').forEach(card => {
-    card.addEventListener('click', async () => {
-      const id = card.dataset.id;
-      const note = await dbGet('notes', id);
-      if (note) openNoteModal(note);
-    });
-  });
-}
-
-// ===== Project Listeners =====
-function attachProjectListeners(container) {
-  container.querySelectorAll('.project-card').forEach(card => {
-    card.addEventListener('click', async () => {
-      const id = card.dataset.id;
-      const project = await dbGet('projects', id);
-      if (project) openProjectModal(project);
-    });
-  });
-}
-
-// ===== FAB =====
-const fab = document.getElementById('fab');
-const fabMenu = document.getElementById('fab-menu');
-
-fab.addEventListener('click', () => {
-  fab.classList.toggle('active');
-  fabMenu.classList.toggle('hidden');
-});
-
-fabMenu.querySelectorAll('.fab-menu-item').forEach(item => {
-  item.addEventListener('click', () => {
-    const action = item.dataset.action;
-    fab.classList.remove('active');
-    fabMenu.classList.add('hidden');
-    
-    if (action === 'task') openTaskModal();
-    if (action === 'note') openNoteModal();
-    if (action === 'project') openProjectModal();
-  });
-});
-
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('#fab') && !e.target.closest('#fab-menu')) {
-    fab.classList.remove('active');
-    fabMenu.classList.add('hidden');
-  }
-});
-
-// ===== Search =====
-document.getElementById('header-search-btn').addEventListener('click', () => {
-  navigateTo('search');
-  setTimeout(() => document.getElementById('search-input').focus(), 100);
-});
-
-document.getElementById('search-close').addEventListener('click', () => {
-  navigateTo('dashboard');
-});
-
-let searchHistory = JSON.parse(localStorage.getItem('planner_search_history') || '[]');
-
-function renderSearchHistory() {
-  const container = document.getElementById('search-history-list');
-  if (searchHistory.length === 0) {
-    container.innerHTML = '<p style="color:var(--text-3);font-size:13px;">История пуста</p>';
-    return;
-  }
-  container.innerHTML = searchHistory.slice(0, 10).map(q => `
-    <div class="search-history-item" data-query="${sanitizeHTML(q)}">
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 111.13-9.36L1 10"/></svg>
-      <span>${sanitizeHTML(q)}</span>
-    </div>
-  `).join('');
-  
-  container.querySelectorAll('.search-history-item').forEach(item => {
-    item.addEventListener('click', () => {
-      document.getElementById('search-input').value = item.dataset.query;
-      performSearch();
-    });
-  });
-}
-
-async function performSearch() {
-  const query = document.getElementById('search-input').value.trim().toLowerCase();
-  if (!query) return;
-  
-  if (!searchHistory.includes(query)) {
-    searchHistory.unshift(query);
-    if (searchHistory.length > 20) searchHistory.pop();
-    localStorage.setItem('planner_search_history', JSON.stringify(searchHistory));
-    renderSearchHistory();
-  }
-  
-  const filterTasks = document.getElementById('filter-tasks').checked;
-  const filterNotes = document.getElementById('filter-notes').checked;
-  const filterProjects = document.getElementById('filter-projects').checked;
-  
-  const results = [];
-  
-  if (filterTasks) {
-    const tasks = await dbGetAll('tasks');
-    const matched = tasks.filter(t => 
-      t.title.toLowerCase().includes(query) ||
-      (t.description || '').toLowerCase().includes(query) ||
-      (t.tags || []).some(tag => tag.toLowerCase().includes(query))
-    );
-    if (matched.length) results.push({ type: 'tasks', items: matched });
-  }
-  
-  if (filterNotes) {
-    const notes = await dbGetAll('notes');
-    const matched = notes.filter(n => 
-      (n.title || '').toLowerCase().includes(query) ||
-      (n.content || '').toLowerCase().includes(query) ||
-      (n.tags || []).some(tag => tag.toLowerCase().includes(query))
-    );
-    if (matched.length) results.push({ type: 'notes', items: matched });
-  }
-  
-  if (filterProjects) {
-    const projects = await dbGetAll('projects');
-    const matched = projects.filter(p => 
-      p.name.toLowerCase().includes(query) ||
-      (p.description || '').toLowerCase().includes(query)
-    );
-    if (matched.length) results.push({ type: 'projects', items: matched });
-  }
-  
-  renderSearchResults(results, query);
-}
-
-function renderSearchResults(results, query) {
-  const container = document.getElementById('search-results');
-  const historyEl = document.getElementById('search-history');
-  
-  historyEl.classList.add('hidden');
-  
-  if (results.length === 0) {
-    container.innerHTML = `
-      <div class="search-no-results">
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <p>Ничего не найдено по запросу "${sanitizeHTML(query)}"</p>
-      </div>
-    `;
-    return;
-  }
-  
-  container.innerHTML = results.map(group => {
-    const typeNames = { tasks: 'Задачи', notes: 'Заметки', projects: 'Проекты' };
-    return `
-      <div class="search-result-group">
-        <div class="search-result-group-title">${typeNames[group.type]}</div>
-        ${group.items.map(item => renderSearchResultItem(item, group.type)).join('')}
-      </div>
-    `;
-  }).join('');
-  
-  container.querySelectorAll('.search-result-item').forEach(item => {
-    item.addEventListener('click', async () => {
-      const type = item.dataset.type;
-      const id = item.dataset.id;
-      
-      if (type === 'tasks') {
-        const task = await dbGet('tasks', id);
-        if (task) openTaskModal(task);
-      } else if (type === 'notes') {
-        const note = await dbGet('notes', id);
-        if (note) openNoteModal(note);
-      } else if (type === 'projects') {
-        const project = await dbGet('projects', id);
-        if (project) openProjectModal(project);
-      }
-    });
-  });
-}
-
-function renderSearchResultItem(item, type) {
-  let icon = '';
-  let title = '';
-  let subtitle = '';
-  
-  if (type === 'tasks') {
-    icon = '✓';
-    title = item.title;
-    subtitle = item.dueDate ? formatDate(item.dueDate) : 'Без даты';
-  } else if (type === 'notes') {
-    icon = '📝';
-    title = item.title || 'Без названия';
-    subtitle = formatDate(item.updatedAt);
-  } else if (type === 'projects') {
-    icon = item.icon || '📁';
-    title = item.name;
-    subtitle = item.description || '';
-  }
-  
-  return `
-    <div class="search-result-item" data-type="${type}" data-id="${item.id}">
-      <div class="search-result-icon">${icon}</div>
-      <div class="search-result-info">
-        <div class="search-result-title">${sanitizeHTML(title)}</div>
-        <div class="search-result-subtitle">${sanitizeHTML(subtitle)}</div>
-      </div>
-    </div>
-  `;
-}
-
-document.getElementById('search-input').addEventListener('input', debounce(() => performSearch(), 300));
-document.getElementById('search-input').addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') performSearch();
-});
-
-document.querySelectorAll('#view-search input[type="checkbox"]').forEach(cb => {
-  cb.addEventListener('change', () => {
-    const query = document.getElementById('search-input').value.trim();
-    if (query) performSearch();
-  });
-});
-
-// ===== Statistics =====
-async function renderStats() {
-  const tasks = await dbGetAll('tasks');
-  const projects = await dbGetAll('projects');
-  const today = formatDateISO(new Date());
-  const weekStart = formatDateISO(getWeekStart(new Date()));
-  
-  const todayCompleted = tasks.filter(t => t.status === 'completed' && t.completedAt?.startsWith(today)).length;
-  const weekCompleted = tasks.filter(t => {
-    if (t.status !== 'completed' || !t.completedAt) return false;
-    return t.completedAt >= weekStart;
-  }).length;
-  const monthCompleted = tasks.filter(t => {
-    if (t.status !== 'completed' || !t.completedAt) return false;
-    const d = new Date(t.completedAt);
-    const now = new Date();
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
-  const totalActive = tasks.filter(t => t.status === 'active').length;
-  
-  document.getElementById('stat-completed-today').textContent = todayCompleted;
-  document.getElementById('stat-completed-week').textContent = weekCompleted;
-  document.getElementById('stat-completed-month').textContent = monthCompleted;
-  document.getElementById('stat-total-active').textContent = totalActive;
-  
-  // Heatmap (last 30 days)
-  const heatmap = document.getElementById('stats-heatmap');
-  const heatmapData = {};
-  
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = formatDateISO(d);
-    heatmapData[dateStr] = tasks.filter(t => t.status === 'completed' && t.completedAt?.startsWith(dateStr)).length;
-  }
-  
-  const maxCount = Math.max(...Object.values(heatmapData), 1);
-  
-  heatmap.innerHTML = Object.entries(heatmapData).map(([date, count]) => {
-    const level = Math.min(5, Math.ceil((count / maxCount) * 5));
-    return `<div class="heatmap-cell l${level}" title="${formatDate(date)}: ${count} задач"></div>`;
-  }).join('');
-  
-  // Projects chart
-  const projectsChart = document.getElementById('stats-projects-chart');
-  const projectStats = projects.filter(p => !p.isArchived).map(p => {
-    const pTasks = tasks.filter(t => t.projectId === p.id);
-    const completed = pTasks.filter(t => t.status === 'completed').length;
-    return { ...p, total: pTasks.length, completed };
-  }).filter(p => p.total > 0).sort((a, b) => b.total - a.total).slice(0, 5);
-  
-  const maxProject = Math.max(...projectStats.map(p => p.total), 1);
-  
-  projectsChart.innerHTML = projectStats.map(p => `
-    <div class="chart-bar">
-      <div class="chart-bar-label">${p.icon} ${sanitizeHTML(p.name)}</div>
-      <div class="chart-bar-track">
-        <div class="chart-bar-fill project" style="width:${(p.total / maxProject) * 100}%">
-          <span class="chart-bar-value">${p.completed}/${p.total}</span>
-        </div>
-      </div>
-    </div>
-  `).join('');
-  
-  // Priority chart
-  const priorityChart = document.getElementById('stats-priority-chart');
-  const priorities = ['high', 'medium', 'low'];
-  const priorityNames = { high: 'Высокий', medium: 'Средний', low: 'Низкий' };
-  const priorityColors = { high: 'var(--priority-high)', medium: 'var(--priority-medium)', low: 'var(--priority-low)' };
-  
-  const priorityStats = priorities.map(p => ({
-    priority: p,
-    count: tasks.filter(t => t.priority === p && t.status === 'active').length
-  }));
-  
-  const maxPriority = Math.max(...priorityStats.map(p => p.count), 1);
-  
-  priorityChart.innerHTML = priorityStats.map(p => `
-    <div class="chart-bar">
-      <div class="chart-bar-label">${priorityNames[p.priority]}</div>
-      <div class="chart-bar-track">
-        <div class="chart-bar-fill ${p.priority}" style="width:${(p.count / maxPriority) * 100}%;background:${priorityColors[p.priority]}">
-          <span class="chart-bar-value">${p.count}</span>
-        </div>
-      </div>
-    </div>
-  `).join('');
-}
-
-// ===== Settings =====
-async function initSettings() {
-  // Theme
-  const theme = await getSetting('theme', 'light');
-  document.documentElement.setAttribute('data-theme', theme);
-  document.querySelectorAll('.segment[data-theme]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.theme === theme);
-  });
-  
-  // Scheme
-  const scheme = await getSetting('scheme', 'ocean');
-  document.documentElement.setAttribute('data-scheme', scheme);
-  document.querySelectorAll('.theme-option[data-scheme]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.scheme === scheme);
-  });
-  
-  // Days range (2-7) — добавляем элемент в настройки
-  const daysRange = await getSetting('daysRange', '2');
-  const rangeInput = document.getElementById('days-range-select');
-  if (rangeInput) rangeInput.value = daysRange;
-  
-  // Version
-  document.getElementById('app-version-display').textContent = `v${APP_VERSION}`;
-}
-
-// Theme toggle
-document.querySelectorAll('.segment[data-theme]').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const theme = btn.dataset.theme;
-    document.documentElement.setAttribute('data-theme', theme);
-    document.querySelectorAll('.segment[data-theme]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    await setSetting('theme', theme);
-    
-    const metaTheme = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
-    if (metaTheme) metaTheme.content = theme === 'dark' ? '#1a1a2e' : '#667eea';
-  });
-});
-
-// Scheme toggle
-document.querySelectorAll('.theme-option[data-scheme]').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const scheme = btn.dataset.scheme;
-    document.documentElement.setAttribute('data-scheme', scheme);
-    document.querySelectorAll('.theme-option[data-scheme]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    await setSetting('scheme', scheme);
-  });
-});
-
-// Days range setting (2-7)
-const daysRangeSelect = document.getElementById('days-range-select');
-if (daysRangeSelect) {
-  daysRangeSelect.addEventListener('change', async () => {
-    const value = daysRangeSelect.value;
-    await setSetting('daysRange', value);
-    // Обновить dashboard и задачи
-    if (currentView === 'dashboard') renderDashboard();
-    if (currentView === 'tasks') renderTasks();
-    showToast(`Диапазон дней: ${value}`, 'info');
-  });
-}
-
-// Export
-document.getElementById('export-btn').addEventListener('click', async () => {
-  const data = {
-    version: APP_VERSION,
-    exportDate: new Date().toISOString(),
-    tasks: await dbGetAll('tasks'),
-    notes: await dbGetAll('notes'),
-    projects: await dbGetAll('projects'),
-    tags: await dbGetAll('tags'),
-    settings: await dbGetAll('settings')
-  };
-  
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `planner-pro-backup-${formatDateISO(new Date())}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-  
-  showToast('Данные экспортированы', 'success');
-});
-
-// Import
-document.getElementById('import-btn').addEventListener('click', () => {
-  document.getElementById('import-file').click();
-});
-
-document.getElementById('import-file').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  
-  showConfirm('Создать резервную копию текущих данных перед импортом?', async () => {
-    const currentData = {
-      version: APP_VERSION,
-      exportDate: new Date().toISOString(),
-      tasks: await dbGetAll('tasks'),
-      notes: await dbGetAll('notes'),
-      projects: await dbGetAll('projects'),
-      tags: await dbGetAll('tags'),
-      settings: await dbGetAll('settings')
-    };
-    
-    const blob = new Blob([JSON.stringify(currentData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `planner-pro-auto-backup-${formatDateISO(new Date())}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    await processImport(file);
-  }, () => processImport(file));
-});
-
-async function processImport(file) {
-  try {
-    const text = await file.text();
-    const data = JSON.parse(text);
-    
-    if (!data.tasks || !data.notes) {
-      showToast('Неверный формат файла', 'error');
-      return;
-    }
-    
-    const stores = ['tasks', 'notes', 'projects', 'tags', 'settings'];
-    for (const storeName of stores) {
-      const all = await dbGetAll(storeName);
-      for (const item of all) {
-        await dbDelete(storeName, item.id || item.key);
-      }
-    }
-    
-    if (data.tasks) for (const item of data.tasks) await dbAdd('tasks', item);
-    if (data.notes) for (const item of data.notes) await dbAdd('notes', item);
-    if (data.projects) for (const item of data.projects) await dbAdd('projects', item);
-    if (data.tags) for (const item of data.tags) await dbAdd('tags', item);
-    if (data.settings) for (const item of data.settings) await dbAdd('settings', item);
-    
-    showToast('Данные импортированы', 'success');
-    renderDashboard();
-  } catch (err) {
-    showToast('Ошибка импорта: ' + err.message, 'error');
-  }
-  
-  document.getElementById('import-file').value = '';
-}
-
-// Clear all data
-document.getElementById('clear-data-btn').addEventListener('click', () => {
-  showConfirm('Удалить ВСЕ данные? Это действие необратимо!', async () => {
-    const data = {
-      version: APP_VERSION,
-      exportDate: new Date().toISOString(),
-      tasks: await dbGetAll('tasks'),
-      notes: await dbGetAll('notes'),
-      projects: await dbGetAll('projects'),
-      tags: await dbGetAll('tags'),
-      settings: await dbGetAll('settings')
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `planner-pro-final-backup-${formatDateISO(new Date())}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    const stores = ['tasks', 'notes', 'projects', 'tags', 'settings', 'sync_meta'];
-    for (const storeName of stores) {
-      const all = await dbGetAll(storeName);
-      for (const item of all) {
-        await dbDelete(storeName, item.id || item.key);
-      }
-    }
-    
-    await seedDemoData();
-    showToast('Данные очищены, созданы демо-данные', 'info');
-    renderDashboard();
-  });
-});
-
-// ===== Service Worker Registration =====
-async function registerSW() {
-  if (!('serviceWorker' in navigator)) return;
-  
-  try {
-    const registration = await navigator.serviceWorker.register('sw.js');
-    
-    registration.addEventListener('updatefound', () => {
-      const newWorker = registration.installing;
-      newWorker.addEventListener('statechange', () => {
-        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-          showUpdateToast();
         }
-      });
-    });
-    
-    navigator.serviceWorker.addEventListener('message', (event) => {
-      if (event.data?.type === 'UPDATE_AVAILABLE') {
-        showUpdateToast();
-      }
-    });
-  } catch (err) {
-    console.error('SW registration failed:', err);
-  }
-}
+      );
 
-function showUpdateToast() {
-  const toast = document.getElementById('update-toast');
-  toast.classList.remove('hidden');
-}
+      accentSelect?.addEventListener(
+        'change',
+        async () => {
 
-document.getElementById('update-btn').addEventListener('click', () => {
-  window.location.reload();
-});
+          await updateAccent(
+            accentSelect.value
+          );
 
-// ===== Install Prompt =====
-let deferredPrompt = null;
+        }
+      );
 
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  
-  const visits = parseInt(localStorage.getItem('planner_visits') || '0');
-  localStorage.setItem('planner_visits', visits + 1);
-  
-  const dismissed = localStorage.getItem('planner_install_dismissed');
-  if (dismissed || visits < 1) return;
-  
-  setTimeout(() => {
-    if (deferredPrompt) {
-      document.getElementById('install-banner').classList.remove('hidden');
     }
-  }, 30000);
-});
+  );
 
-document.getElementById('install-btn').addEventListener('click', async () => {
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  const { outcome } = await deferredPrompt.userChoice;
-  if (outcome === 'accepted') {
-    localStorage.setItem('planner_install_dismissed', 'true');
-    document.getElementById('install-banner').classList.add('hidden');
-  }
-  deferredPrompt = null;
-});
-
-document.getElementById('install-dismiss').addEventListener('click', () => {
-  localStorage.setItem('planner_install_dismissed', 'true');
-  document.getElementById('install-banner').classList.add('hidden');
-});
-
-// ===== Online/Offline =====
-function updateOnlineStatus() {
-  const indicator = document.querySelector('.offline-indicator');
-  if (!navigator.onLine) {
-    if (!indicator) {
-      const div = document.createElement('div');
-      div.className = 'offline-indicator show';
-      document.body.appendChild(div);
-    } else {
-      indicator.classList.add('show');
-    }
-  } else {
-    if (indicator) indicator.classList.remove('show');
-  }
-}
-
-window.addEventListener('online', updateOnlineStatus);
-window.addEventListener('offline', updateOnlineStatus);
-
-// ===== Before Unload Warning =====
-window.addEventListener('beforeunload', (e) => {
-  const modals = document.querySelectorAll('.modal.active');
-  if (modals.length > 0) {
-    e.preventDefault();
-    e.returnValue = 'У вас есть несохранённые изменения. Покинуть страницу?';
-    return e.returnValue;
-  }
-});
-
-// ===== Swipe for tabs in Tasks view =====
-function initTabSwipe() {
-  const tabsContainer = document.querySelector('#view-tasks .tabs');
-  if (!tabsContainer) return;
-  const tabs = Array.from(tabsContainer.querySelectorAll('.tab'));
-  if (!tabs.length) return;
-  
-  let startX = 0;
-  let isSwipingTabs = false;
-  
-  tabsContainer.addEventListener('touchstart', (e) => {
-    startX = e.touches[0].clientX;
-    isSwipingTabs = true;
-  }, { passive: true });
-  
-  tabsContainer.addEventListener('touchend', (e) => {
-    if (!isSwipingTabs) return;
-    isSwipingTabs = false;
-    const endX = e.changedTouches[0].clientX;
-    const diff = endX - startX;
-    const threshold = 50;
-    
-    const activeTab = tabsContainer.querySelector('.tab.active');
-    if (!activeTab) return;
-    
-    let index = tabs.indexOf(activeTab);
-    if (diff > threshold && index > 0) {
-      // swipe right -> previous tab
-      tabs[index - 1].click();
-    } else if (diff < -threshold && index < tabs.length - 1) {
-      // swipe left -> next tab
-      tabs[index + 1].click();
-    }
-  });
-}
-
-// ===== Internal Notifications on Open =====
-async function checkNotifications() {
-  const today = formatDateISO(new Date());
-  const tasks = await dbGetAll('tasks');
-  
-  const overdue = tasks.filter(t => t.dueDate && isOverdue(t.dueDate) && t.status === 'active');
-  if (overdue.length > 0) {
-    showToast(`Просрочено задач: ${overdue.length}`, 'error', 5000);
-  }
-  
-  const highPriorityToday = tasks.filter(t => t.dueDate === today && t.priority === 'high' && t.status === 'active');
-  if (highPriorityToday.length > 0) {
-    showToast(`Важных задач на сегодня: ${highPriorityToday.length}`, 'info', 5000);
-  }
-}
-
-// ===== Initialization =====
-async function init() {
-  try {
-    await openDB();
-    await seedDemoData();
-    await initSettings();
-    await registerSW();
-    
-    const hash = window.location.hash.slice(1);
-    if (hash && document.getElementById(`view-${hash}`)) {
-      navigateTo(hash);
-    } else {
-      navigateTo('dashboard');
-    }
-    
-    renderDashboard();
-    initTabSwipe();
-    
-    setTimeout(checkNotifications, 1000);
-    
-    const splash = document.getElementById('splash-screen');
-    splash.classList.add('hidden');
-    
-    document.getElementById('app').classList.remove('hidden');
-    
-    console.log(`Planner Pro v${APP_VERSION} initialized`);
-  } catch (err) {
-    console.error('Init error:', err);
-    showToast('Ошибка инициализации приложения', 'error');
-  }
-}
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
-  init();
 }

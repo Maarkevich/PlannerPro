@@ -1,3 +1,4 @@
 User-agent: *
 Allow: /
-Sitemap: https://maarkevich.github.io/PlannerPro/sitemap.xml
+
+Sitemap: ./sitemap.xml

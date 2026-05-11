@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Planner Pro</title>
+
+  <script>
+    (() => {
+      const base = '/PlannerPro';
+      const path = window.location.pathname;
+
+      if (path.startsWith(base)) {
+        const route = path.slice(base.length);
+
+        if (route && route !== '/') {
+          window.location.replace(
+            `${base}/index.html#${route}`
+          );
+        } else {
+          window.location.replace(`${base}/index.html`);
+        }
+      } else {
+        window.location.replace('./index.html');
+      }
+    })();
+  </script>
+
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background:
+        radial-gradient(circle at top left, #667eea 0%, transparent 45%),
+        radial-gradient(circle at bottom right, #764ba2 0%, transparent 45%),
+        #0f172a;
+      color: white;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "SF Pro Display",
+        Inter,
+        sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .loader {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 3px solid rgba(255,255,255,.15);
+      border-top-color: white;
+      animation: spin .8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="loader"></div>
+</body>
+</html>
