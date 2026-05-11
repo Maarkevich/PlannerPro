@@ -68,11 +68,11 @@
           </div>
         </div>
         <div class="dashboard-section">
-          <h2 class="section-title">Задачи на сегодня <span class="badge" id="today-count">0</span></h2>
+          <h2 class="section-title">Задачи на ближайшие дни <span class="badge" id="today-count">0</span></h2>
           <div class="task-list" id="dashboard-today-tasks"></div>
           <div class="empty-state hidden" id="dashboard-today-empty">
             <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 12l2.5 2.5L16 9"/></svg>
-            <p>На сегодня задач нет. Отличный день!</p>
+            <p>Задач поблизости нет. Отличный момент!</p>
           </div>
         </div>
         <div class="dashboard-section hidden" id="dashboard-overdue-section">
@@ -88,7 +88,7 @@
           </div>
         </div>
         <div class="dashboard-section">
-          <h2 class="section-title">Недавние проекты</h2>
+          <h2 class="section-title">Проекты</h2>
           <div class="projects-list" id="dashboard-recent-projects"></div>
           <div class="empty-state hidden" id="dashboard-projects-empty">
             <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
@@ -100,16 +100,16 @@
       <!-- Tasks -->
       <section id="view-tasks" class="view">
         <div class="tabs">
-          <button class="tab active" data-tab="inbox">Входящие</button>
+          <button class="tab active" data-tab="all">Все</button>
           <button class="tab" data-tab="today">Сегодня</button>
           <button class="tab" data-tab="upcoming">Предстоящие</button>
           <button class="tab" data-tab="someday">Когда-нибудь</button>
         </div>
-        <div class="tab-content active" id="tab-inbox">
-          <div class="task-list" id="inbox-tasks"></div>
-          <div class="empty-state" id="inbox-empty">
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-            <p>Входящие пусты. Добавьте задачу!</p>
+        <div class="tab-content active" id="tab-all">
+          <div class="task-list" id="all-tasks"></div>
+          <div class="empty-state" id="all-empty">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <p>Нет активных задач</p>
           </div>
         </div>
         <div class="tab-content" id="tab-today">
@@ -134,170 +134,181 @@
           </div>
         </div>
       </section>
+     
+  <!-- Calendar -->
+  <section id="view-calendar" class="view">
+    <div class="calendar-header">
+      <button id="cal-prev" class="icon-btn" aria-label="Предыдущий месяц">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <h2 id="cal-month-year">Май 2026</h2>
+      <button id="cal-next" class="icon-btn" aria-label="Следующий месяц">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+      <button id="cal-today" class="btn btn-sm">Сегодня</button>
+    </div>
+    <div class="calendar-grid" id="calendar-grid"></div>
+  </section>
 
-      <!-- Calendar -->
-      <section id="view-calendar" class="view">
-        <div class="calendar-header">
-          <button id="cal-prev" class="icon-btn" aria-label="Предыдущий месяц">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-          <h2 id="cal-month-year">Май 2026</h2>
-          <button id="cal-next" class="icon-btn" aria-label="Следующий месяц">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-          <button id="cal-today" class="btn btn-sm">Сегодня</button>
-        </div>
-        <div class="calendar-grid" id="calendar-grid"></div>
-      </section>
+  <!-- Notes -->
+  <section id="view-notes" class="view">
+    <div class="notes-search" style="margin-bottom: 16px;">
+      <input type="text" id="notes-search-input" placeholder="Поиск по заметкам..." class="search-input" style="width:100%;">
+    </div>
+    <div class="notes-grid" id="notes-grid"></div>
+    <div class="empty-state hidden" id="notes-empty">
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <p>Нет заметок. Создайте первую!</p>
+    </div>
+  </section>
 
-      <!-- Notes -->
-      <section id="view-notes" class="view">
-        <div class="notes-search">
-          <input type="text" id="notes-search-input" placeholder="Поиск по заметкам..." class="search-input">
-        </div>
-        <div class="notes-grid" id="notes-grid"></div>
-        <div class="empty-state hidden" id="notes-empty">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          <p>Нет заметок. Создайте первую!</p>
-        </div>
-      </section>
+  <!-- Projects -->
+  <section id="view-projects" class="view">
+    <div class="projects-list" id="projects-list"></div>
+    <div class="empty-state hidden" id="projects-empty">
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+      <p>Нет проектов. Создайте первый!</p>
+    </div>
+  </section>
 
-      <!-- Projects -->
-      <section id="view-projects" class="view">
-        <div class="projects-list" id="projects-list"></div>
-        <div class="empty-state hidden" id="projects-empty">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-          <p>Нет проектов. Создайте первый!</p>
-        </div>
-      </section>
+  <!-- Stats -->
+  <section id="view-stats" class="view">
+    <div class="stats-grid">
+      <div class="stat-card card">
+        <div class="stat-value" id="stat-completed-today">0</div>
+        <div class="stat-label">Выполнено сегодня</div>
+      </div>
+      <div class="stat-card card">
+        <div class="stat-value" id="stat-completed-week">0</div>
+        <div class="stat-label">За неделю</div>
+      </div>
+      <div class="stat-card card">
+        <div class="stat-value" id="stat-completed-month">0</div>
+        <div class="stat-label">За месяц</div>
+      </div>
+      <div class="stat-card card">
+        <div class="stat-value" id="stat-total-active">0</div>
+        <div class="stat-label">Активных задач</div>
+      </div>
+    </div>
+    <div class="stats-section card">
+      <h3 class="stats-title">Продуктивность (30 дней)</h3>
+      <div class="heatmap" id="stats-heatmap"></div>
+    </div>
+    <div class="stats-section card">
+      <h3 class="stats-title">По проектам</h3>
+      <div class="chart-bars" id="stats-projects-chart"></div>
+    </div>
+    <div class="stats-section card">
+      <h3 class="stats-title">По приоритетам</h3>
+      <div class="chart-bars" id="stats-priority-chart"></div>
+    </div>
+  </section>
 
-      <!-- Stats -->
-      <section id="view-stats" class="view">
-        <div class="stats-grid">
-          <div class="stat-card card">
-            <div class="stat-value" id="stat-completed-today">0</div>
-            <div class="stat-label">Выполнено сегодня</div>
-          </div>
-          <div class="stat-card card">
-            <div class="stat-value" id="stat-completed-week">0</div>
-            <div class="stat-label">За неделю</div>
-          </div>
-          <div class="stat-card card">
-            <div class="stat-value" id="stat-completed-month">0</div>
-            <div class="stat-label">За месяц</div>
-          </div>
-          <div class="stat-card card">
-            <div class="stat-value" id="stat-total-active">0</div>
-            <div class="stat-label">Активных задач</div>
-          </div>
-        </div>
-        <div class="stats-section card">
-          <h3 class="stats-title">Продуктивность (30 дней)</h3>
-          <div class="heatmap" id="stats-heatmap"></div>
-        </div>
-        <div class="stats-section card">
-          <h3 class="stats-title">По проектам</h3>
-          <div class="chart-bars" id="stats-projects-chart"></div>
-        </div>
-        <div class="stats-section card">
-          <h3 class="stats-title">По приоритетам</h3>
-          <div class="chart-bars" id="stats-priority-chart"></div>
-        </div>
-      </section>
+  <!-- Archive -->
+  <section id="view-archive" class="view">
+    <div class="tabs">
+      <button class="tab active" data-tab="completed">Выполненные</button>
+      <button class="tab" data-tab="trash">Корзина</button>
+    </div>
+    <div class="tab-content active" id="tab-completed">
+      <div class="task-list" id="completed-tasks"></div>
+      <div class="empty-state" id="completed-empty">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 12l2.5 2.5L16 9"/></svg>
+        <p>Нет выполненных задач</p>
+      </div>
+    </div>
+    <div class="tab-content" id="tab-trash">
+      <div class="trash-actions">
+        <button id="clear-trash-btn" class="btn btn-danger btn-block">Очистить корзину</button>
+      </div>
+      <div class="task-list" id="trash-tasks"></div>
+      <div class="empty-state hidden" id="trash-empty">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+        <p>Корзина пуста</p>
+      </div>
+    </div>
+  </section>
 
-      <!-- Archive -->
-      <section id="view-archive" class="view">
-        <div class="tabs">
-          <button class="tab active" data-tab="completed">Выполненные</button>
-          <button class="tab" data-tab="trash">Корзина</button>
-        </div>
-        <div class="tab-content active" id="tab-completed">
-          <div class="task-list" id="completed-tasks"></div>
-          <div class="empty-state" id="completed-empty">
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 12l2.5 2.5L16 9"/></svg>
-            <p>Нет выполненных задач</p>
-          </div>
-        </div>
-        <div class="tab-content" id="tab-trash">
-          <div class="trash-actions">
-            <button id="clear-trash-btn" class="btn btn-danger">Очистить корзину</button>
-          </div>
-          <div class="task-list" id="trash-tasks"></div>
-          <div class="empty-state hidden" id="trash-empty">
-            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-            <p>Корзина пуста</p>
-          </div>
-        </div>
-      </section>
+  <!-- Search -->
+  <section id="view-search" class="view">
+    <div class="search-header">
+      <input type="text" id="search-input" placeholder="Поиск..." class="search-input" autofocus>
+      <button id="search-close" class="icon-btn" aria-label="Закрыть">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="search-filters">
+      <label class="filter-chip"><input type="checkbox" id="filter-tasks" checked><span>Задачи</span></label>
+      <label class="filter-chip"><input type="checkbox" id="filter-notes" checked><span>Заметки</span></label>
+      <label class="filter-chip"><input type="checkbox" id="filter-projects"><span>Проекты</span></label>
+    </div>
+    <div class="search-history" id="search-history">
+      <h3 class="search-history-title">История поиска</h3>
+      <div id="search-history-list"></div>
+    </div>
+    <div class="search-results" id="search-results"></div>
+  </section>
 
-      <!-- Search -->
-      <section id="view-search" class="view">
-        <div class="search-header">
-          <input type="text" id="search-input" placeholder="Поиск..." class="search-input" autofocus>
-          <button id="search-close" class="icon-btn" aria-label="Закрыть">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+  <!-- Settings -->
+  <section id="view-settings" class="view">
+    <div class="settings-group">
+      <h3 class="settings-group-title">Внешний вид</h3>
+      <div class="setting-item">
+        <span class="setting-label">Тема</span>
+        <div class="segmented-control">
+          <button class="segment active" data-theme="light">Светлая</button>
+          <button class="segment" data-theme="dark">Тёмная</button>
         </div>
-        <div class="search-filters">
-          <label class="filter-chip"><input type="checkbox" id="filter-tasks" checked><span>Задачи</span></label>
-          <label class="filter-chip"><input type="checkbox" id="filter-notes" checked><span>Заметки</span></label>
-          <label class="filter-chip"><input type="checkbox" id="filter-projects"><span>Проекты</span></label>
+      </div>
+      <div class="setting-item">
+        <span class="setting-label">Цветовая схема</span>
+        <div class="theme-options">
+          <button class="theme-option active" data-scheme="ocean" title="Океан" style="--theme-preview: linear-gradient(135deg,#667eea,#764ba2)"></button>
+          <button class="theme-option" data-scheme="sunset" title="Закат" style="--theme-preview: linear-gradient(135deg,#fa709a,#fee140)"></button>
+          <button class="theme-option" data-scheme="forest" title="Лес" style="--theme-preview: linear-gradient(135deg,#11998e,#38ef7d)"></button>
+          <button class="theme-option" data-scheme="neon" title="Неон" style="--theme-preview: linear-gradient(135deg,#b721ff,#21d4fd)"></button>
         </div>
-        <div class="search-history" id="search-history">
-          <h3 class="search-history-title">История поиска</h3>
-          <div id="search-history-list"></div>
-        </div>
-        <div class="search-results" id="search-results"></div>
-      </section>
-
-      <!-- Settings -->
-      <section id="view-settings" class="view">
-        <div class="settings-group">
-          <h3 class="settings-group-title">Внешний вид</h3>
-          <div class="setting-item">
-            <span class="setting-label">Тема</span>
-            <div class="segmented-control">
-              <button class="segment active" data-theme="light">Светлая</button>
-              <button class="segment" data-theme="dark">Тёмная</button>
-            </div>
-          </div>
-          <div class="setting-item">
-            <span class="setting-label">Цветовая схема</span>
-            <div class="theme-options">
-              <button class="theme-option active" data-scheme="ocean" title="Океан" style="--theme-preview: linear-gradient(135deg,#667eea,#764ba2)"></button>
-              <button class="theme-option" data-scheme="sunset" title="Закат" style="--theme-preview: linear-gradient(135deg,#fa709a,#fee140)"></button>
-              <button class="theme-option" data-scheme="forest" title="Лес" style="--theme-preview: linear-gradient(135deg,#11998e,#38ef7d)"></button>
-              <button class="theme-option" data-scheme="neon" title="Неон" style="--theme-preview: linear-gradient(135deg,#b721ff,#21d4fd)"></button>
-            </div>
-          </div>
-        </div>
-        <div class="settings-group">
-          <h3 class="settings-group-title">Данные</h3>
-          <button id="export-btn" class="setting-btn">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Экспорт данных
-          </button>
-          <button id="import-btn" class="setting-btn">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Импорт данных
-          </button>
-          <input type="file" id="import-file" accept=".json" class="hidden">
-          <button id="clear-data-btn" class="setting-btn setting-btn-danger">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-            Очистить все данные
-          </button>
-        </div>
-        <div class="settings-group">
-          <h3 class="settings-group-title">О приложении</h3>
-          <div class="about-info">
-            <p><strong>Planner Pro</strong></p>
-            <p>Версия: <span id="app-version-display">v1.0</span></p>
-            <p>Планировщик задач и заметок с офлайн-работой</p>
-            <a href="https://github.com/Maarkevich/PlannerPro" target="_blank" rel="noopener">GitHub</a>
-          </div>
-        </div>
-      </section>
-    </main>
+      </div>
+      <div class="setting-item">
+        <span class="setting-label">Задачи на главной / предстоящие</span>
+        <select id="days-range-select" class="input" style="width:auto; min-width:80px;">
+          <option value="2">2 дня</option>
+          <option value="3">3 дня</option>
+          <option value="4">4 дня</option>
+          <option value="5">5 дней</option>
+          <option value="6">6 дней</option>
+          <option value="7">7 дней</option>
+        </select>
+      </div>
+    </div>
+    <div class="settings-group">
+      <h3 class="settings-group-title">Данные</h3>
+      <button id="export-btn" class="setting-btn">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Экспорт данных
+      </button>
+      <button id="import-btn" class="setting-btn">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Импорт данных
+      </button>
+      <input type="file" id="import-file" accept=".json" class="hidden">
+      <button id="clear-data-btn" class="setting-btn setting-btn-danger">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+        Очистить все данные
+      </button>
+    </div>
+    <div class="settings-group">
+      <h3 class="settings-group-title">О приложении</h3>
+      <div class="about-info">
+        <p><strong>Planner Pro</strong></p>
+        <p>Версия: <span id="app-version-display">v1.0</span></p>
+        <p>Планировщик задач и заметок с офлайн-работой</p>
+        <a href="https://github.com/Maarkevich/PlannerPro" target="_blank" rel="noopener">GitHub →</a>
+      </div>
+    </div>
+  </section>
+</main>
 
     <!-- Bottom Navigation (mobile) -->
     <nav id="bottom-nav" class="bottom-nav">
@@ -393,7 +404,6 @@
       </button>
     </div>
 
-    <!-- Modals -->
     <!-- Task Modal -->
     <div id="task-modal" class="modal">
       <div class="modal-overlay"></div>
