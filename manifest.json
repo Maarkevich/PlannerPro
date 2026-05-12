@@ -1,94 +1,25 @@
 {
   "name": "Planner Pro",
   "short_name": "Planner",
-  "description": "Современный офлайн планировщик задач, заметок и проектов",
-  "lang": "ru",
-  "start_url": "./index.html",
-  "scope": "./",
+  "description": "Планировщик задач и заметок с офлайн-работой",
+  "start_url": "./",
   "display": "standalone",
-  "display_override": [
-    "standalone",
-    "window-controls-overlay"
-  ],
   "orientation": "portrait",
-  "background_color": "#0f172a",
+  "background_color": "#ffffff",
   "theme_color": "#667eea",
-  "categories": [
-    "productivity",
-    "utilities",
-    "lifestyle"
-  ],
+  "scope": "./",
   "icons": [
-    {
-      "src": "./icon-72.png",
-      "sizes": "72x72",
-      "type": "image/png"
-    },
-    {
-      "src": "./icon-96.png",
-      "sizes": "96x96",
-      "type": "image/png"
-    },
-    {
-      "src": "./icon-128.png",
-      "sizes": "128x128",
-      "type": "image/png"
-    },
-    {
-      "src": "./icon-144.png",
-      "sizes": "144x144",
-      "type": "image/png"
-    },
-    {
-      "src": "./icon-152.png",
-      "sizes": "152x152",
-      "type": "image/png"
-    },
-    {
-      "src": "./icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "./maskable-icon.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "./icon-384.png",
-      "sizes": "384x384",
-      "type": "image/png"
-    },
-    {
-      "src": "./icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
+    { "src": "icon-72.png", "sizes": "72x72", "type": "image/png" },
+    { "src": "icon-96.png", "sizes": "96x96", "type": "image/png" },
+    { "src": "icon-128.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "icon-144.png", "sizes": "144x144", "type": "image/png" },
+    { "src": "icon-152.png", "sizes": "152x152", "type": "image/png" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-384.png", "sizes": "384x384", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "maskable-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
-  "shortcuts": [
-    {
-      "name": "Новая задача",
-      "short_name": "Задача",
-      "url": "./index.html#new-task",
-      "icons": [
-        {
-          "src": "./icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
-      "name": "Новая заметка",
-      "short_name": "Заметка",
-      "url": "./index.html#new-note",
-      "icons": [
-        {
-          "src": "./icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    }
-  ]
+  "categories": ["productivity", "lifestyle"],
+  "lang": "ru",
+  "dir": "ltr"
 }
