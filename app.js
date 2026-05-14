@@ -1686,9 +1686,19 @@ function toggleFabMenu() {
   if (menu.classList.contains('active')) {
     menu.classList.remove('active');
     fab.classList.remove('active');
+    // Возвращаем hidden через небольшую задержку для анимации
+    setTimeout(() => {
+      if (!menu.classList.contains('active')) {
+        menu.classList.add('hidden');
+      }
+    }, 300);
   } else {
-    menu.classList.add('active');
-    fab.classList.add('active');
+    menu.classList.remove('hidden');
+    // Даём время браузеру для применения display
+    setTimeout(() => {
+      menu.classList.add('active');
+      fab.classList.add('active');
+    }, 10);
   }
 }
 
@@ -1697,6 +1707,11 @@ function closeFabMenu() {
   const fab = document.getElementById('fab-btn');
   menu.classList.remove('active');
   fab.classList.remove('active');
+  setTimeout(() => {
+    if (!menu.classList.contains('active')) {
+      menu.classList.add('hidden');
+    }
+  }, 300);
 }
 
 // ===== Menu Panel =====
