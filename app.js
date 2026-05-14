@@ -527,7 +527,7 @@ function showToast(message, type = 'info') {
 }
 
 // ===== Navigation =====
-function navigateTo(viewName) {
+async function navigateTo(viewName) {
   // Hide all views
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   
@@ -565,16 +565,16 @@ function navigateTo(viewName) {
   store.set('currentView', viewName);
   
   // Render view content
-  renderView(viewName);
+  await renderView(viewName);
   
   // Close menu if open
   closeMenuPanel();
 }
 
-function renderView(viewName) {
+async function renderView(viewName) {
   switch(viewName) {
     case 'dashboard':
-      renderDashboard();
+      await renderDashboard();
       break;
     case 'tasks':
       renderTasks();
@@ -595,13 +595,13 @@ function renderView(viewName) {
       renderArchive();
       break;
     case 'settings':
-      renderSettings();
+      await renderSettings();
       break;
   }
 }
 
 // ===== Dashboard Rendering =====
-function renderDashboard() {
+async function renderDashboard() {
   const tasks = store.get('tasks');
   const notes = store.get('notes');
   const projects = store.get('projects');
@@ -1353,7 +1353,7 @@ async function saveTaskFromModal() {
   await saveTask(task);
   closeTaskModal();
   showToast(currentTask ? 'Задача обновлена' : 'Задача создана', 'success');
-  renderView(store.get('currentView'));
+  await renderView(store.get('currentView'));
 }
 
 async function deleteTaskFromModal() {
@@ -1369,7 +1369,7 @@ async function deleteTaskFromModal() {
   
   closeTaskModal();
   showToast('Задача удалена', 'info');
-  renderView(store.get('currentView'));
+  await renderView(store.get('currentView'));
 }
 
 // ===== Note Modal =====
@@ -1464,7 +1464,7 @@ async function saveNoteFromModal() {
   await saveNote(note);
   closeNoteModal();
   showToast(currentNote ? 'Заметка обновлена' : 'Заметка создана', 'success');
-  renderView(store.get('currentView'));
+  await renderView(store.get('currentView'));
 }
 
 async function deleteNoteFromModal() {
@@ -1477,7 +1477,7 @@ async function deleteNoteFromModal() {
   await deleteNote(note.id);
   closeNoteModal();
   showToast('Заметка удалена', 'info');
-  renderView(store.get('currentView'));
+  await renderView(store.get('currentView'));
 }
 
 // ===== Project Modal =====
@@ -1555,7 +1555,7 @@ async function saveProjectFromModal() {
   await saveProject(project);
   closeProjectModal();
   showToast(currentProject ? 'Проект обновлён' : 'Проект создан', 'success');
-  renderView(store.get('currentView'));
+  await renderView(store.get('currentView'));
 }
 
 async function deleteProjectFromModal() {
@@ -1568,7 +1568,7 @@ async function deleteProjectFromModal() {
   await deleteProject(project.id);
   closeProjectModal();
   showToast('Проект удалён', 'info');
-  renderView(store.get('currentView'));
+  await renderView(store.get('currentView'));
 }
 
 // ===== Day Sheet =====
@@ -1715,15 +1715,15 @@ function closeMenuPanel() {
 }
 
 // ===== Search =====
-function openSearch() {
-  navigateTo('search');
+async function openSearch() {
+  await navigateTo('search');
   setTimeout(() => {
     document.getElementById('search-input').focus();
   }, 100);
 }
 
-function closeSearch() {
-  navigateTo('dashboard');
+async function closeSearch() {
+  await navigateTo('dashboard');
 }
 
 const performSearch = debounce(() => {
@@ -1874,7 +1874,7 @@ async function importData(file) {
     }
     
     await loadAllData();
-    renderView(store.get('currentView'));
+    await renderView(store.get('currentView'));
     showToast('Данные импортированы', 'success');
   } catch (err) {
     console.error('Import error:', err);
@@ -1893,7 +1893,7 @@ async function clearAllData() {
     await dbClear('tags');
     
     await loadAllData();
-    renderView(store.get('currentView'));
+    await renderView(store.get('currentView'));
     showToast('Все данные удалены', 'info');
   } catch (err) {
     console.error('Clear error:', err);
@@ -2247,7 +2247,7 @@ function setupEventListeners() {
   document.getElementById('setting-upcoming-days').addEventListener('change', async (e) => {
     await setSetting('upcomingDays', parseInt(e.target.value));
     if (store.get('currentView') === 'dashboard') {
-      renderDashboard();
+      await renderDashboard();
     }
   });
   
@@ -2295,7 +2295,7 @@ async function init() {
     setupEventListeners();
     
     // Render initial view
-    navigateTo('dashboard');
+    await navigateTo('dashboard');
     
     // Hide splash screen
     setTimeout(() => {
