@@ -1,8 +1,11 @@
 /* ============================================================
-   Planner Pro — Точка входа приложения  (v1.0.0)
+   Planner Pro — Точка входа приложения  (v1.0.1)
    Инициализация, layout, навигация, FAB, PWA, keyboard shortcuts
-   ============================================================ */
-
+   ------------------------------------------------------------
+   ВАЖНО: не перезаписываем document.body.innerHTML, а наполняем
+   существующие контейнеры из index.html (#side-nav, #main-content,
+   #bottom-nav). Это устраняет конфликт между двумя архитектурами.
+============================================================ */
 (function () {
   'use strict';
 
@@ -13,51 +16,55 @@
   const Store = window.PlannerStore;
   const Toast = window.PlannerToast;
 
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.0.1';
   window.APP_VERSION = APP_VERSION;
   window.APP_BASE = '/PlannerPro/';
 
   /* ==================== Layout ==================== */
 
+  /**
+   * Наполняет существующие контейнеры из index.html.
+   * НЕ перезаписывает body.innerHTML — сплэш и все элементы сохраняются.
+   */
   function buildLayout() {
-    document.body.innerHTML = `
-      <div class="app-shell">
-        <!-- Desktop sidebar -->
-        <aside class="sidebar" aria-label="Основная навигация">
-          <div class="sidebar-logo">${I.get('check-square', 26)}<span>Planner Pro</span></div>
-          ${navItemsHTML()}
-          <div style="margin-top:auto;padding:12px">
-            <button class="btn btn-primary btn-block" data-add-task>${I.get('plus', 18)} Новая задача</button>
+    const sideNav = document.getElementById('side-nav');
+    const mainContent = document.getElementById('main-content');
+    const bottomNav = document.getElementById('bottom-nav');
+    const fab = document.getElementById('fab');
+
+    // ---------- Side navigation (desktop) ----------
+    if (sideNav) {
+      sideNav.innerHTML = `
+        <div class="side-nav-brand">${I.get('check-square', 24)}<span>Planner Pro</span></div>
+        ${navItemsHTML('side-nav-item')}
+        <div class="side-nav-section">
+          <button class="btn btn-primary btn-block" data-add-task>${I.get('plus', 18)} Новая задача</button>
+        </div>`;
+    }
+
+    // ---------- Main content ----------
+    if (mainContent) {
+      mainContent.innerHTML = `
+        <header class="topbar">
+          <button class="btn btn-icon btn-ghost menu-btn" aria-label="Открыть меню">${I.get('menu', 22)}</button>
+          <span class="topbar-title">Planner Pro</span>
+          <div class="topbar-actions">
+            <button class="btn btn-icon btn-ghost" data-search-btn aria-label="Поиск">${I.get('search', 20)}</button>
+            <button class="btn btn-icon btn-ghost" data-theme-toggle aria-label="Переключить тему"></button>
           </div>
-        </aside>
+        </header>
+        <div id="view-container" class="view-container"></div>`;
+    }
 
-        <!-- Main -->
-        <main class="main-content">
-          <header class="topbar">
-            <button class="btn btn-icon btn-ghost menu-btn" aria-label="Меню">${I.get('menu', 22)}</button>
-            <span style="font-weight:700;font-size:16px">Planner Pro</span>
-            <div style="margin-left:auto;display:flex;gap:4px;align-items:center">
-              <button class="btn btn-icon btn-ghost" data-search-btn aria-label="Поиск">${I.get('search', 20)}</button>
-              <button class="btn btn-icon btn-ghost" data-theme-toggle aria-label="Переключить тему"></button>
-            </div>
-          </header>
-          <div id="view-container" class="view-container"></div>
-        </main>
-
-        <!-- Mobile bottom nav -->
-        <nav class="bottom-nav" aria-label="Навигация">${bottomNavHTML()}</nav>
-
-        <!-- FAB -->
-        <button class="fab" aria-label="Создать">${I.get('plus', 26)}</button>
-
-        <div id="modal-root"></div>
-      </div>
-      <input type="file" accept=".json" hidden id="global-import">`;
+    // ---------- Bottom navigation (mobile) ----------
+    if (bottomNav) {
+      bottomNav.innerHTML = bottomNavHTML('bottom-nav-item');
+    }
 
     wireLayout();
   }
 
-  function navItemsHTML() {
+  function navItemsHTML(itemClass = 'nav-item') {
     const items = [
       ['dashboard', 'home', 'Главная'],
       ['tasks', 'check-square', 'Задачи'],
@@ -68,11 +75,11 @@
       ['settings', 'settings', 'Настройки']
     ];
     return items.map(([route, icon, label]) =>
-      `<a class="nav-item" href="#/route"data−route="{route}" data-route="route"data−route="{route}">I.get(icon,20)<span>{I.get(icon, 20)}<span>I.get(icon,20)<span>{label}</span></a>`
+      `<a class="${itemClass}" href="#/${route}" data-route="${route}">${I.get(icon, 20)}<span>${label}</span></a>`
     ).join('');
   }
 
-  function bottomNavHTML() {
+  function bottomNavHTML(itemClass = 'nav-item') {
     const items = [
       ['dashboard', 'home', 'Главная'],
       ['tasks', 'check-square', 'Задачи'],
@@ -80,71 +87,90 @@
       ['notes', 'note', 'Заметки']
     ];
     return items.map(([route, icon, label]) =>
-      `<a class="nav-item" href="#/route"data−route="{route}" data-route="route"data−route="{route}">I.get(icon,22)<span>{I.get(icon, 22)}<span>I.get(icon,22)<span>{label}</span></a>`
+      `<a class="${itemClass}" href="#/${route}" data-route="${route}">${I.get(icon, 22)}<span>${label}</span></a>`
     ).join('');
   }
 
   function wireLayout() {
     // Тема: иконка + переключение
     const themeBtn = document.querySelector('[data-theme-toggle]');
-    function renderThemeIcon() {
-      themeBtn.innerHTML = I.get(Store.state.settings.mode === 'dark' ? 'sun' : 'moon', 20);
-    }
-    renderThemeIcon();
-    themeBtn.addEventListener('click', () => {
-      const mode = Store.state.settings.mode === 'dark' ? 'light' : 'dark';
-      Store.updateSettings({ mode });
-      U.applyTheme(Store.state.settings.theme, mode);
+    if (themeBtn) {
+      function renderThemeIcon() {
+        themeBtn.innerHTML = I.get(Store.state.settings.mode === 'dark' ? 'sun' : 'moon', 20);
+      }
       renderThemeIcon();
-      U.haptic(10);
-    });
-
-    // Кнопка меню (mobile) → открывает сайдбар как drawer
-    document.querySelector('.menu-btn').addEventListener('click', () => {
-      const sidebar = document.querySelector('.sidebar');
-      sidebar.classList.add('open');
-      const backdrop = document.createElement('div');
-      backdrop.className = 'modal-backdrop visible';
-      backdrop.style.zIndex = 'var(--z-sidebar)';
-      backdrop.addEventListener('click', () => {
-        sidebar.classList.remove('open');
-        backdrop.remove();
+      themeBtn.addEventListener('click', () => {
+        const mode = Store.state.settings.mode === 'dark' ? 'light' : 'dark';
+        Store.updateSettings({ mode });
+        U.applyTheme(Store.state.settings.theme, mode);
+        renderThemeIcon();
+        U.haptic(10);
       });
-      document.body.appendChild(backdrop);
-    });
+    }
+
+    // Кнопка меню (мобильная) → открывает сайдбар как drawer
+    const menuBtn = document.querySelector('.menu-btn');
+    if (menuBtn) {
+      menuBtn.addEventListener('click', () => {
+        const sidebar = document.getElementById('side-nav');
+        if (!sidebar) return;
+        sidebar.classList.add('open');
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'modal-backdrop visible';
+        backdrop.style.zIndex = 'calc(var(--z-sidebar) - 1)';
+        backdrop.addEventListener('click', () => {
+          sidebar.classList.remove('open');
+          backdrop.remove();
+        });
+        document.body.appendChild(backdrop);
+      });
+    }
 
     // FAB → быстрое меню
-    document.querySelector('.fab').addEventListener('click', openFabMenu);
+    const fab = document.getElementById('fab');
+    if (fab) {
+      fab.addEventListener('click', openFabMenu);
+    }
 
     // Sidebar кнопка новой задачи
-    document.querySelector('[data-add-task]').addEventListener('click', () => {
-      window.PlannerViews.openTaskModal();
-    });
+    const addTaskBtn = document.querySelector('[data-add-task]');
+    if (addTaskBtn) {
+      addTaskBtn.addEventListener('click', () => {
+        window.PlannerViews.openTaskModal();
+      });
+    }
 
     // Поиск в топбаре
-    document.querySelector('[data-search-btn]').addEventListener('click', () => {
-      Store.navigate('tasks');
-      setTimeout(() => {
-        document.querySelector('.search-bar input')?.focus();
-      }, 100);
-    });
+    const searchBtn = document.querySelector('[data-search-btn]');
+    if (searchBtn) {
+      searchBtn.addEventListener('click', () => {
+        Store.navigate('tasks');
+        setTimeout(() => {
+          document.querySelector('.search-bar input')?.focus();
+        }, 100);
+      });
+    }
   }
 
   /* ==================== FAB quick menu ==================== */
 
   function openFabMenu() {
     U.haptic(10);
+
     const actions = [
       { icon: 'check-square', label: 'Задача', onClick: () => window.PlannerViews.openTaskModal() },
       { icon: 'note', label: 'Заметка', onClick: () => window.PlannerViews.openNoteEditor() },
       { icon: 'calendar', label: 'На дату', onClick: () => {
-          const iso = U.todayISO();
-          window.PlannerViews.openTaskModal(null, { dueDate: iso });
-        } },
+        const iso = U.todayISO();
+        window.PlannerViews.openTaskModal(null, { dueDate: iso });
+      } },
       { icon: 'folder', label: 'Проект', onClick: () => { Store.navigate('projects'); } }
     ];
 
     const root = document.getElementById('modal-root');
+    if (!root) return;
+
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.style.background = 'transparent';
@@ -152,10 +178,11 @@
 
     const menu = document.createElement('div');
     menu.className = 'fab-menu';
+
     actions.forEach(({ icon, label, onClick }) => {
       const item = document.createElement('button');
       item.className = 'fab-menu-item';
-      item.innerHTML = `I.get(icon,20)<span>{I.get(icon, 20)}<span>I.get(icon,20)<span>{U.escapeHTML(label)}</span>`;
+      item.innerHTML = `${I.get(icon, 20)}<span>${U.escapeHTML(label)}</span>`;
       item.addEventListener('click', () => { close(); onClick(); });
       menu.appendChild(item);
     });
@@ -164,14 +191,31 @@
     root.appendChild(backdrop);
 
     let closed = false;
+
     function close() {
       if (closed) return;
       closed = true;
       backdrop.classList.remove('visible');
       setTimeout(() => backdrop.remove(), 300);
     }
+
     backdrop.addEventListener('click', close);
     requestAnimationFrame(() => requestAnimationFrame(() => backdrop.classList.add('visible')));
+  }
+
+  /* ==================== Splash screen ==================== */
+
+  function hideSplash() {
+    const splash = document.getElementById('splash-screen');
+    if (!splash) return;
+    splash.classList.add('hidden');
+    // Удаляем из DOM после завершения анимации
+    setTimeout(() => splash.remove(), 400);
+  }
+
+  function updateSplashStatus(text) {
+    const el = document.getElementById('splash-status');
+    if (el) el.textContent = text;
   }
 
   /* ==================== PWA install prompt ==================== */
@@ -182,9 +226,10 @@
       Store.state.installPromptEvent = e;
       Toast.info('Приложение можно установить', 4000);
     });
+
     window.addEventListener('appinstalled', () => {
       Store.state.installPromptEvent = null;
-      Toast.success('Planner Pro установлен 🎉');
+      Toast.success('Planner Pro установлен');
     });
   }
 
@@ -220,6 +265,7 @@
           <div class="legend-item"><kbd>C</kbd> — календарь</div>
           <div class="legend-item"><kbd>K</kbd> — заметки</div>
           <div class="legend-item"><kbd>/</kbd> — поиск</div>
+          <div class="legend-item"><kbd>?</kbd> — эта справка</div>
         </div>`
     });
   }
@@ -227,12 +273,13 @@
   /* ==================== Init ==================== */
 
   async function init() {
-    buildLayout();
+    updateSplashStatus('Загрузка настроек…');
 
     // Загружаем настройки
     const savedTheme = await window.PlannerDB.getSetting('theme', 'ocean');
     const savedMode = await window.PlannerDB.getSetting('mode',
       matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+
     Store.updateSettings({ theme: savedTheme, mode: savedMode });
     U.applyTheme(savedTheme, savedMode);
 
@@ -241,6 +288,8 @@
       window.PlannerDB.setSetting('theme', s.theme);
       window.PlannerDB.setSetting('mode', s.mode);
     });
+
+    updateSplashStatus('Загрузка данных…');
 
     // Загружаем данные
     try {
@@ -257,6 +306,16 @@
 
     // Чистим просроченную корзину
     await Promise.all([S.TaskService.purgeExpired(), S.NoteService.purgeExpired()]);
+
+    updateSplashStatus('Запуск…');
+
+    // Строим интерфейс (наполняем существующие контейнеры)
+    buildLayout();
+
+    // Показываем приложение, скрываем сплэш
+    const app = document.getElementById('app');
+    if (app) app.hidden = false;
+    hideSplash();
 
     // Стартуем роутер
     window.PlannerRouter.start();
@@ -279,12 +338,6 @@
   document.addEventListener('DOMContentLoaded', init);
 })();
 
-/* ============================================================
-   Planner Pro — app.js часть 2  (v1.0.0)
-   Bulk-режим, offline-индикатор, drag&drop, авто-бэкап,
-   финальная сборка (дополняет часть 1)
-   ============================================================ */
-
 (function () {
   'use strict';
 
@@ -306,14 +359,21 @@
     function update(online) {
       indicator.classList.toggle('visible', !online);
     }
+
     update(navigator.onLine);
-    window.addEventListener('online', () => { update(true); Toast.success('Соединение восстановлено'); });
+    window.addEventListener('online', () => {
+      update(true);
+      Toast.success('Соединение восстановлено');
+    });
     window.addEventListener('offline', () => update(false));
   }
 
   /* ==================== Bulk selection mode ==================== */
 
   function setupBulkMode() {
+    const viewContainer = document.getElementById('view-container');
+    if (!viewContainer) return;
+
     // Long press на задаче → вход в bulk-режим и выбор элемента
     const observer = new MutationObserver(() => {
       if (!Store.state.bulkMode) {
@@ -328,7 +388,7 @@
         });
       }
     });
-    observer.observe(document.getElementById('view-container'), { childList: true, subtree: true });
+    observer.observe(viewContainer, { childList: true, subtree: true });
 
     Store.on('bulkSelection', renderBulkBar);
 
@@ -344,17 +404,20 @@
       if (!bar) {
         bar = C.bulkBar(count, [
           { icon: 'check', label: 'Выполнить выбранные', onClick: async () => {
-              await S.TaskService.bulkAction(Store.selectedIds, 'complete');
-              Toast.success('Задачи выполнены'); exitBulk();
-            } },
+            await S.TaskService.bulkAction(Store.selectedIds, 'complete');
+            Toast.success('Задачи выполнены');
+            exitBulk();
+          } },
           { icon: 'archive', label: 'В архив', onClick: async () => {
-              await S.TaskService.bulkAction(Store.selectedIds, 'archive');
-              Toast.info('Перемещено в архив'); exitBulk();
-            } },
+            await S.TaskService.bulkAction(Store.selectedIds, 'archive');
+            Toast.info('Перемещено в архив');
+            exitBulk();
+          } },
           { icon: 'trash', label: 'Удалить', danger: true, onClick: async () => {
-              await S.TaskService.bulkAction(Store.selectedIds, 'delete');
-              Toast.info('Перемещено в корзину'); exitBulk();
-            } },
+            await S.TaskService.bulkAction(Store.selectedIds, 'delete');
+            Toast.info('Перемещено в корзину');
+            exitBulk();
+          } },
           { icon: 'closeSquare', label: 'Отменить выбор', onClick: exitBulk }
         ]);
         document.body.appendChild(bar);
@@ -373,6 +436,7 @@
 
   function setupDragAndDrop() {
     const container = document.getElementById('view-container');
+    if (!container) return;
 
     container.addEventListener('dragstart', (e) => {
       const item = e.target.closest('.task-item');
@@ -401,7 +465,6 @@
       const target = e.target.closest('.task-item');
       if (!draggedId || !target || target.dataset.id === draggedId) return;
 
-      // Меняем приоритет/срок перетаскиваемой задачи на целевую
       const dragged = Store.state.tasks.find((t) => t.id === draggedId);
       const onto = Store.state.tasks.find((t) => t.id === target.dataset.id);
       if (!dragged || !onto) return;
@@ -410,7 +473,7 @@
         dueDate: onto.dueDate,
         priority: onto.priority
       });
-      Toast.info(`«dragged.title»перенесенок«{dragged.title}» перенесено к «dragged.title»перенесенок«{onto.title}»`);
+      Toast.info(`«${dragged.title}» перенесено к «${onto.title}»`);
     });
   }
 
@@ -437,7 +500,7 @@
     if (seen) return;
 
     C.Modal.open({
-      title: 'Добро пожаловать в Planner Pro! 👋',
+      title: 'Добро пожаловать в Planner Pro!',
       content: `
         <div class="legend" style="gap:14px">
           <div class="legend-item">${I.get('check-square', 18)} Задачи с приоритетами, повторами и подзадачами</div>
@@ -486,6 +549,7 @@
   window.addEventListener('error', (e) => {
     console.error('[global]', e.error || e.message);
   });
+
   window.addEventListener('unhandledrejection', (e) => {
     console.error('[unhandled rejection]', e.reason);
   });

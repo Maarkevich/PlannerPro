@@ -1,8 +1,7 @@
 /* ============================================================
-   Planner Pro — Бизнес-логика / сервисы  (v1.0.0)
-   Tasks, Notes, Projects, Tags, Stats
-   ============================================================ */
-
+   Planner Pro — Бизнес-логика / сервисы  (v1.0.1)
+   Tasks, Notes, Projects, Tags, Stats, Backup
+============================================================ */
 (function () {
   'use strict';
 
@@ -13,7 +12,12 @@
 
   /* ==================== Projects ==================== */
 
-  const PROJECT_COLORS = ['#667eea', '#fa709a', '#11998e', '#b721ff', '#f59e0b', '#0ea5e9', '#ef4444', '#8b5cf6'];
+  const PROJECT_COLORS = [
+    '#667eea', '#fa709a', '#11998e', '#b721ff',
+    '#f59e0b', '#0ea5e9', '#ef4444', '#8b5cf6',
+    '#14b8a6', '#f97316', '#06b6d4', '#84cc16',
+    '#ec4899', '#a855f7', '#eab308', '#64748b'
+  ];
 
   const ProjectService = {
     async loadAll() {
@@ -26,9 +30,12 @@
       const project = {
         id: U.uuid(),
         name: name.trim(),
+        description: '',
+        icon: '',
         color: color || PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)],
         isArchived: false,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        updatedAt: Date.now()
       };
       await DB.put(DB.STORES.PROJECTS, project);
       await this.loadAll();
@@ -38,7 +45,7 @@
     async update(id, patch) {
       const project = await DB.get(DB.STORES.PROJECTS, id);
       if (!project) return null;
-      Object.assign(project, patch);
+      Object.assign(project, patch, { updatedAt: Date.now() });
       await DB.put(DB.STORES.PROJECTS, project);
       await this.loadAll();
       return project;
@@ -46,6 +53,10 @@
 
     async archive(id) {
       return this.update(id, { isArchived: true });
+    },
+
+    async unarchive(id) {
+      return this.update(id, { isArchived: false });
     }
   };
 
@@ -61,8 +72,9 @@
       const clean = name.trim().toLowerCase().replace(/^#/, '');
       if (!clean) return null;
       let tag = Store.state.tags.find((t) => t.name === clean);
-      if (tag) { tag.count = (tag.count || 0) + 1; }
-      else {
+      if (tag) {
+        tag.count = (tag.count || 0) + 1;
+      } else {
         tag = { id: U.uuid(), name: clean, count: 1 };
         Store.state.tags.push(tag);
       }
@@ -73,10 +85,12 @@
     async release(name) {
       const clean = String(name).toLowerCase();
       const tag = Store.state.tags.find((t) => t.name === clean);
-      if (tag && --tag.count <= 0) {
+      if (!tag) return;
+      tag.count = Math.max(0, (tag.count || 1) - 1);
+      if (tag.count <= 0) {
         await DB.remove(DB.STORES.TAGS, tag.id);
         Store.state.tags = Store.state.tags.filter((t) => t !== tag);
-      } else if (tag) {
+      } else {
         await DB.put(DB.STORES.TAGS, tag);
       }
     }
@@ -110,7 +124,9 @@
         deletedAt: null
       };
 
-      for (const raw of (data.tags || [])) {
+      // Дедупликация тегов при создании
+      const uniqueTags = [...new Set(data.tags || [])];
+      for (const raw of uniqueTags) {
         const name = await TagService.ensure(raw);
         if (name) task.tags.push(name);
       }
@@ -126,14 +142,17 @@
 
       // Синхронизация тегов
       if (patch.tags) {
+        const uniquePatch = [...new Set(patch.tags)];
         for (const old of task.tags) {
-          if (!patch.tags.includes(old)) await TagService.release(old);
+          if (!uniquePatch.includes(old)) await TagService.release(old);
         }
         const newTags = [];
-        for (const raw of patch.tags) {
-          newTags.push(Store.state.tags.some((t) => t.name === raw)
-            ? raw
-            : (await TagService.ensure(raw)));
+        for (const raw of uniquePatch) {
+          newTags.push(
+            Store.state.tags.some((t) => t.name === raw)
+              ? raw
+              : (await TagService.ensure(raw))
+          );
         }
         patch.tags = newTags.filter(Boolean);
       }
@@ -161,7 +180,8 @@
             title: task.title, notes: task.notes, priority: task.priority,
             projectId: task.projectId, dueDate: nextDue,
             startTime: task.startTime, endTime: task.endTime,
-            repeat: task.repeat, subtasks: task.subtasks.map((s) => ({ ...s, completed: false })),
+            repeat: task.repeat,
+            subtasks: task.subtasks.map((s) => ({ ...s, id: U.uuid(), completed: false })),
             tags: [...task.tags]
           });
           await this.update(id, { status: 'completed', completedAt: Date.now() });
@@ -180,27 +200,40 @@
       if (todayTasks.length === 0) {
         const hadToday = Store.state.tasks.some(
           (t) => t.status === 'completed' && t.completedAt &&
-                 U.toISODate(new Date(t.completedAt)) === U.todayISO()
+            U.toISODate(new Date(t.completedAt)) === U.todayISO()
         );
-        if (hadToday) { U.confetti(); Toast.success('Все задачи на сегодня выполнены! 🎉'); }
+        if (hadToday) {
+          U.confetti();
+          Toast.success('Все задачи на сегодня выполнены!');
+        }
       }
     },
 
+    /**
+     * Вычисляет следующую дату повтора.
+     * Для monthly — клампинг к последнему дню месяца (31 янв → 28/29 фев).
+     */
     nextOccurrence(iso, repeat) {
       const d = U.fromISODate(iso);
       switch (repeat) {
-        case 'daily': return U.toISODate(U.addDays(d, 1));
-        case 'weekly': return U.toISODate(U.addDays(d, 7));
+        case 'daily':
+          return U.toISODate(U.addDays(d, 1));
+        case 'weekly':
+          return U.toISODate(U.addDays(d, 7));
         case 'monthly': {
-          const n = new Date(d.getFullYear(), d.getMonth() + 1, d.getDate());
-          return U.toISODate(n);
+          const y = d.getFullYear();
+          const m = d.getMonth() + 1;
+          const lastDay = new Date(y, m + 1, 0).getDate();
+          const day = Math.min(d.getDate(), lastDay);
+          return U.toISODate(new Date(y, m, day));
         }
         case 'weekdays': {
           let next = U.addDays(d, 1);
           while ([0, 6].includes(next.getDay())) next = U.addDays(next, 1);
           return U.toISODate(next);
         }
-        default: return null;
+        default:
+          return null;
       }
     },
 
@@ -246,6 +279,7 @@
       if (projectId) list = list.filter((t) => t.projectId === projectId);
       if (priority) list = list.filter((t) => t.priority === priority);
       if (tag) list = list.filter((t) => (t.tags || []).includes(tag));
+
       if (search) {
         const q = search.toLowerCase();
         list = list.filter((t) =>
@@ -284,10 +318,13 @@
         title: data.title || '',
         content: data.content || '',
         projectId: data.projectId || null,
-        tags: [],
+        tags: data.tags || [],
         isPinned: false,
+        isFavorite: false,
+        status: 'active',           // active | deleted
         createdAt: Date.now(),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        deletedAt: null
       };
       await DB.put(DB.STORES.NOTES, note);
       await this.loadAll();
@@ -309,11 +346,18 @@
       await this.update(id, { isPinned: !note.isPinned });
     },
 
+    async toggleFavorite(id) {
+      const note = await DB.get(DB.STORES.NOTES, id);
+      if (!note) return;
+      await this.update(id, { isFavorite: !note.isFavorite });
+    },
+
     async softDelete(id) {
       const note = await DB.get(DB.STORES.NOTES, id);
       if (!note) return;
       note.status = 'deleted';
       note.deletedAt = Date.now();
+      note.updatedAt = Date.now();
       await DB.put(DB.STORES.NOTES, note);
       await this.loadAll();
     },
@@ -361,9 +405,10 @@
         case 'year': start = new Date(now.getFullYear(), 0, 1); break;
         default: start = new Date(0);
       }
-      const startTs = start.getTime();
 
+      const startTs = start.getTime();
       const inPeriod = (ts) => ts >= startTs;
+
       const completed = Store.state.tasks.filter(
         (t) => t.status === 'completed' && t.completedAt && inPeriod(t.completedAt)
       );
@@ -392,9 +437,9 @@
       const overdue = activeNow.filter((t) => t.dueDate && t.dueDate < U.todayISO());
       const dueToday = activeNow.filter((t) => t.dueDate === U.todayISO());
 
-      // Completion rate за период
+      // Completion rate за период (клампим к 100%)
       const total = created.length;
-      const rate = total ? Math.round((completed.length / total) * 100) : 0;
+      const rate = total ? Math.min(100, Math.round((completed.length / total) * 100)) : 0;
 
       // Heatmap: последние 26 недель
       const heatmap = {};
@@ -422,7 +467,12 @@
   const BackupService = {
     export() {
       return DB.exportAll().then((data) => {
-        const payload = { app: 'PlannerPro', version: window.APP_VERSION, exportedAt: new Date().toISOString(), ...data };
+        const payload = {
+          app: 'PlannerPro',
+          version: window.APP_VERSION,
+          exportedAt: new Date().toISOString(),
+          ...data
+        };
         U.downloadFile(`planner-backup-${U.todayISO()}.json`, JSON.stringify(payload, null, 2));
         Toast.success('Резервная копия сохранена');
       }).catch(() => Toast.error('Ошибка экспорта'));
@@ -435,8 +485,14 @@
           try {
             const data = JSON.parse(reader.result);
             if (data.app !== 'PlannerPro') throw new Error('Неверный формат файла');
-            await DB.createBackup(); // авто-бэкап перед импортом
+
+            // Авто-бэкап перед импортом (страховка)
+            await DB.createBackup();
+
+            // Полное восстановление: очищаем текущие данные, затем импортируем
+            await DB.wipeAll();
             await DB.importAll(data);
+
             await Promise.all([
               TaskService.loadAll(), NoteService.loadAll(),
               ProjectService.loadAll(), TagService.loadAll()

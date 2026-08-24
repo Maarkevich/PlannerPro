@@ -1,12 +1,12 @@
 /* ============================================================
-   Planner Pro — Утилиты  (v1.0.0)
+   Planner Pro — Утилиты  (v1.0.1)
    UUID, даты, жесты, анимации, тема, sanitize, haptics
-   ============================================================ */
-
+============================================================ */
 (function () {
   'use strict';
 
   /* ---------- UUID ---------- */
+
   function uuid() {
     if (crypto.randomUUID) return crypto.randomUUID();
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -17,6 +17,7 @@
   }
 
   /* ---------- Debounce / throttle ---------- */
+
   function debounce(fn, ms = 300) {
     let t;
     return function (...args) {
@@ -40,6 +41,7 @@
   }
 
   /* ---------- Dates ---------- */
+
   const WEEKDAYS_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
   const MONTHS_NOM = [
     'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -55,7 +57,7 @@
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
-    return `y−{y}-y−{m}-${day}`;
+    return `${y}-${m}-${day}`;
   }
 
   function fromISODate(iso) {
@@ -94,12 +96,12 @@
 
   function formatFullDate(date) {
     const d = new Date(date);
-    return `d.getDate(){d.getDate()}d.getDate(){MONTHS_GEN[d.getMonth()]} ${d.getFullYear()}`;
+    return `${d.getDate()} ${MONTHS_GEN[d.getMonth()]} ${d.getFullYear()}`;
   }
 
   function formatShortDate(date) {
     const d = new Date(date);
-    return `d.getDate(){d.getDate()}d.getDate(){MONTHS_GEN[d.getMonth()].slice(0, 3)}`;
+    return `${d.getDate()} ${MONTHS_GEN[d.getMonth()].slice(0, 3)}`;
   }
 
   function formatTime(hhmm) {
@@ -133,12 +135,17 @@
   }
 
   /* ---------- Sanitize (лёгкая замена DOMPurify для офлайна) ---------- */
+
   const ALLOWED_TAGS = new Set([
-    'P','BR','B','STRONG','I','EM','U','S','DEL','H1','H2','H3','H4',
-    'UL','OL','LI','BLOCKQUOTE','PRE','CODE','HR','A','DIV','SPAN'
+    'P', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'H1', 'H2', 'H3', 'H4',
+    'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE', 'CODE', 'HR', 'A', 'DIV', 'SPAN'
   ]);
   const ALLOWED_ATTRS = new Set(['href', 'class', 'data-checked']);
 
+  /**
+   * Санитизирует HTML-строку, удаляя опасные теги и атрибуты.
+   * ВАЖНО: вызывать и при загрузке контента в редактор, и при сохранении.
+   */
   function sanitizeHTML(html) {
     const template = document.createElement('template');
     template.innerHTML = String(html || '');
@@ -150,7 +157,7 @@
         if (child.nodeType === Node.ELEMENT_NODE) {
           if (!ALLOWED_TAGS.has(child.tagName)) {
             // Заменяем запрещённый тег на span/текст
-            if (['SCRIPT','STYLE','IFRAME','OBJECT','EMBED'].includes(child.tagName)) {
+            if (['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'FORM', 'BUTTON', 'INPUT', 'SVG', 'IMG'].includes(child.tagName)) {
               child.remove();
               return;
             }
@@ -164,10 +171,14 @@
             const name = attr.name.toLowerCase();
             const val = attr.value.trim().toLowerCase();
             if (!ALLOWED_ATTRS.has(name)) { child.removeAttribute(attr.name); return; }
-            if (name === 'href' && (val.startsWith('javascript:') || val.startsWith('data:'))) {
+            if (name === 'href' && (val.startsWith('javascript:') || val.startsWith('data:') || val.startsWith('vbscript:'))) {
               child.removeAttribute(attr.name);
             }
           });
+          // Для ссылок с target="_blank" добавляем rel="noopener"
+          if (child.tagName === 'A' && child.getAttribute('target') === '_blank') {
+            child.setAttribute('rel', 'noopener noreferrer');
+          }
           walk(child);
         } else if (child.nodeType === Node.COMMENT_NODE) {
           child.remove();
@@ -183,6 +194,7 @@
   }
 
   /* ---------- Theme ---------- */
+
   function applyTheme(theme, mode) {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-mode', mode);
@@ -200,6 +212,7 @@
   }
 
   /* ---------- Haptics ---------- */
+
   function haptic(pattern = 10) {
     try {
       if ('vibrate' in navigator && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -247,25 +260,31 @@
   // Long press → onLongPress
   function attachLongPress(el, onLongPress, ms = 500) {
     let timer = null, moved = false;
+
     el.addEventListener('touchstart', (e) => {
       moved = false;
       timer = setTimeout(() => {
         if (!moved) { haptic(20); onLongPress(e); }
       }, ms);
     }, { passive: true });
+
     ['touchmove', 'touchend', 'touchcancel'].forEach((ev) =>
       el.addEventListener(ev, () => { clearTimeout(timer); }, { passive: true })
     );
     el.addEventListener('touchmove', () => { moved = true; }, { passive: true });
   }
 
-  // Pull-to-refresh на контейнере
+  /**
+   * Pull-to-refresh на контейнере.
+   * ВАЖНО: проверяем скролл окна, а не контейнера,
+   * так как страница скроллится на body.
+   */
   function attachPullToRefresh(container, onRefresh) {
     let startY = 0, pulling = false;
     const indicator = container.querySelector('.ptr-indicator');
 
     container.addEventListener('touchstart', (e) => {
-      if (container.scrollTop <= 0) {
+      if (window.scrollY <= 0) {
         startY = e.touches[0].clientY;
         pulling = true;
       }
@@ -274,7 +293,7 @@
     container.addEventListener('touchmove', (e) => {
       if (!pulling) return;
       const dy = e.touches[0].clientY - startY;
-      if (dy > 0 && container.scrollTop <= 0 && indicator) {
+      if (dy > 0 && window.scrollY <= 0 && indicator) {
         indicator.classList.toggle('visible', dy > 60);
       }
     }, { passive: true });
@@ -292,6 +311,7 @@
   }
 
   /* ---------- Ripple effect ---------- */
+
   function attachRipple(el) {
     el.addEventListener('pointerdown', (e) => {
       const rect = el.getBoundingClientRect();
@@ -307,6 +327,7 @@
   }
 
   /* ---------- Confetti ---------- */
+
   function confetti(count = 60) {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const colors = ['#667eea', '#764ba2', '#4facfe', '#fa709a', '#fee140', '#38ef7d', '#21d4fd'];
@@ -324,6 +345,7 @@
   }
 
   /* ---------- Number count-up animation ---------- */
+
   function animateNumber(el, target, duration = 800) {
     const start = performance.now();
     const from = parseInt(el.textContent, 10) || 0;
@@ -337,6 +359,7 @@
   }
 
   /* ---------- Misc helpers ---------- */
+
   function plural(n, forms) { // forms: [one, few, many]
     const abs = Math.abs(n) % 100;
     const n1 = abs % 10;
@@ -355,6 +378,8 @@
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+
+  /* ---------- Public API ---------- */
 
   window.PlannerUtils = {
     uuid, debounce, throttle,

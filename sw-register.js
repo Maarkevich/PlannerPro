@@ -1,7 +1,8 @@
 /* ============================================================
-   Planner Pro — SW registration & update flow  (v1.0.0)
-   ============================================================ */
-
+   Planner Pro — SW registration & update flow  (v1.0.1)
+   Регистрация, периодическая проверка обновлений,
+   тост «Доступно обновление» с анти-наггингом (24 ч)
+============================================================ */
 (function () {
   'use strict';
 
@@ -12,20 +13,23 @@
 
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register(`BASEsw.js?v={BASE}sw.js?v=BASEsw.js?v={window.APP_VERSION}`)
+      .register(`${BASE}sw.js?v=${window.APP_VERSION}`)
       .then((registration) => {
         console.log('[SW] Registered, scope:', registration.scope);
 
-        // Check for updates on every page load
+        // Проверяем обновления при каждой загрузке страницы
         registration.update().catch(() => {});
 
-        // Periodic update check (every 30 min)
+        // Периодическая проверка обновлений (каждые 30 минут)
         setInterval(() => {
           registration.update().catch(() => {});
         }, 30 * 60 * 1000);
 
-        // New SW waiting → show update toast
-        if (registration.waiting) {
+        // Новый SW уже ждёт активации → показываем тост обновления
+        // ВАЖНО: проверяем наличие активного контроллера,
+        // чтобы не показать тост при самой первой загрузке
+        // (когда SW только устанавливается впервые)
+        if (registration.waiting && navigator.serviceWorker.controller) {
           notifyUpdate(registration.waiting);
         }
 
@@ -48,7 +52,8 @@
   });
 
   function notifyUpdate(worker) {
-    // Don't nag if user dismissed this version recently (24h)
+    // Не напоминаем повторно, если пользователь уже закрыл тост
+    // для этой версии в течение последних 24 часов
     try {
       const dismissed = JSON.parse(
         localStorage.getItem(UPDATE_TOAST_KEY) || '{"v":"","t":0}'
@@ -61,8 +66,7 @@
       }
     } catch (_) { /* ignore */ }
 
-    // Wait a moment so UI is ready, then toast via app API if available,
-    // otherwise fallback to simple DOM toast.
+    // Небольшая задержка, чтобы UI был готов
     setTimeout(() => {
       if (window.PlannerToast && typeof window.PlannerToast.update === 'function') {
         window.PlannerToast.update({
@@ -77,12 +81,24 @@
   }
 
   function applyUpdate(worker) {
+    // Запоминаем, что пользователь отклонил обновление этой версии
+    try {
+      localStorage.setItem(UPDATE_TOAST_KEY, JSON.stringify({
+        v: window.APP_VERSION,
+        t: Date.now()
+      }));
+    } catch (_) { /* ignore */ }
+
     worker.postMessage({ type: 'SKIP_WAITING' });
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       window.location.reload();
     });
   }
 
+  /**
+   * Фолбэк-тост, если приложение ещё не загрузило свой Toast-модуль.
+   * Создаётся простым DOM-элементом со стилями из styles.css.
+   */
   function fallbackToast(worker) {
     let root = document.getElementById('toast-root');
     if (!root) {
@@ -90,11 +106,12 @@
       root.id = 'toast-root';
       document.body.appendChild(root);
     }
+
     const toast = document.createElement('div');
     toast.className = 'toast toast-info';
     toast.setAttribute('role', 'alert');
-    toast.innerHTML =
-      '<span>Доступно обновление</span>';
+    toast.innerHTML = '<span>Доступно обновление</span>';
+
     const btn = document.createElement('button');
     btn.className = 'btn btn-primary';
     btn.textContent = 'Обновить';
@@ -102,6 +119,7 @@
       applyUpdate(worker);
       toast.remove();
     });
+
     toast.appendChild(btn);
     root.appendChild(toast);
   }

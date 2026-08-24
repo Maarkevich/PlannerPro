@@ -1,9 +1,9 @@
 /* ============================================================
-   Planner Pro — Переиспользуемые компоненты  (v1.0.0)
+   Planner Pro — Переиспользуемые компоненты  (v1.0.1)
    Modal/BottomSheet, Toast, TaskItem, NoteCard, CalendarGrid,
-   Timeline, EmptyState, SearchBar, ProgressRing, FAB-меню
-   ============================================================ */
-
+   Timeline, EmptyState, SearchBar, ProgressRing, SubtaskItem,
+   TagInput, FAB-меню, Bulk bar
+============================================================ */
 (function () {
   'use strict';
 
@@ -19,7 +19,7 @@
       const backdrop = document.createElement('div');
       backdrop.className = 'modal-backdrop';
       backdrop.innerHTML = `
-        <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+        <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="${esc(title) || 'Диалоговое окно'}">
           <div class="modal-grabber"></div>
           <div class="modal-header">
             <h2 class="modal-title">${esc(title)}</h2>
@@ -30,6 +30,7 @@
       root.appendChild(backdrop);
 
       let closed = false;
+
       function close() {
         if (closed) return;
         closed = true;
@@ -38,6 +39,7 @@
         document.removeEventListener('keydown', onKey);
         onClose?.();
       }
+
       function onKey(e) {
         if (e.key === 'Escape') close();
         // Focus trap
@@ -71,8 +73,13 @@
     function ensureRoot() {
       let root = document.getElementById('toast-root');
       if (!root || !root.classList.contains('toast-root')) {
-        if (!root) { root = document.createElement('div'); root.id = 'toast-root'; document.body.appendChild(root); }
+        if (!root) {
+          root = document.createElement('div');
+          root.id = 'toast-root';
+          document.body.appendChild(root);
+        }
         root.classList.add('toast-root');
+        root.setAttribute('aria-live', 'polite');
       }
       return root;
     }
@@ -83,7 +90,8 @@
       toast.className = `toast toast-${type}`;
       toast.setAttribute('role', 'status');
       const iconName = type === 'success' ? 'check' : type === 'error' ? 'alertCircle' : 'info';
-      toast.innerHTML = `I.get(iconName,20)<span>{I.get(iconName, 20)}<span>I.get(iconName,20)<span>{esc(message)}</span>`;
+      toast.innerHTML = `${I.get(iconName, 20)}<span>${esc(message)}</span>`;
+
       if (actionLabel) {
         const btn = document.createElement('button');
         btn.className = 'btn btn-primary';
@@ -91,8 +99,10 @@
         btn.addEventListener('click', () => { dismiss(); onAction?.(); });
         toast.appendChild(btn);
       }
+
       root.appendChild(toast);
       let timer = setTimeout(dismiss, duration);
+
       function dismiss() {
         clearTimeout(timer);
         toast.classList.add('leaving');
@@ -110,6 +120,7 @@
         show({ message, type: 'info', actionLabel, onAction, duration: 0 })
     };
   })();
+
   window.PlannerToast = Toast;
 
   /* ==================== EmptyState ==================== */
@@ -117,7 +128,7 @@
   function emptyState(icon, text, actionLabel = '', onAction = null) {
     const wrap = document.createElement('div');
     wrap.className = 'empty-state';
-    wrap.innerHTML = `I.get(icon,48)<p>{I.get(icon, 48)}<p>I.get(icon,48)<p>{esc(text)}</p>`;
+    wrap.innerHTML = `${I.get(icon, 48)}<p>${esc(text)}</p>`;
     if (actionLabel) {
       const btn = document.createElement('button');
       btn.className = 'btn btn-primary';
@@ -132,30 +143,32 @@
 
   function priorityDot(priority) {
     const p = I.PRIORITY[priority] || I.PRIORITY.low;
-    return `<span class="project-dot" style="background:p.color"title="{p.color}" title="p.color"title="{p.label}"></span>`;
+    return `<span class="project-dot" style="background:${p.color}" title="${p.label}"></span>`;
   }
 
   function projectDot(projectId, projects) {
     const project = projects.find((p) => p.id === projectId);
     if (!project) return '';
-    return `<span class="project-dot" style="background:esc(project.color)"title="{esc(project.color)}" title="esc(project.color)"title="{esc(project.name)}"></span><span>${esc(project.name)}</span>`;
+    return `<span class="project-dot" style="background:${esc(project.color)}" title="${esc(project.name)}"></span><span>${esc(project.name)}</span>`;
   }
 
   /* ==================== TaskItem ==================== */
 
   function taskItem(task, { projects = [], onToggle, onOpen, onDelete } = {}) {
     const el = document.createElement('article');
-    el.className = `task-item priority-task.priority{task.priority}task.priority{task.status === 'completed' ? ' completed' : ''}`;
+    el.className = `task-item priority-${task.priority}${task.status === 'completed' ? ' completed' : ''}`;
     el.dataset.id = task.id;
-    el.setAttribute('role', 'button');
+    el.setAttribute('role', 'listitem');
     el.setAttribute('tabindex', '0');
+    el.draggable = true; // Включаем HTML5 Drag & Drop
 
     const metaParts = [];
+
     if (task.dueDate) {
-      metaParts.push(`<span style="display:inline-flex;align-items:center;gap:4px">I.get(′calendar′,12){I.get('calendar', 12)}I.get(′calendar′,12){U.formatShortDate(U.fromISODate(task.dueDate))}</span>`);
+      metaParts.push(`<span style="display:inline-flex;align-items:center;gap:4px">${I.get('calendar', 12)}${U.formatShortDate(U.fromISODate(task.dueDate))}</span>`);
     }
     if (task.startTime) {
-      metaParts.push(`<span style="display:inline-flex;align-items:center;gap:4px">I.get(′clock′,12){I.get('clock', 12)}I.get(′clock′,12){esc(task.startTime)}${task.endTime ? '–' + esc(task.endTime) : ''}</span>`);
+      metaParts.push(`<span style="display:inline-flex;align-items:center;gap:4px">${I.get('clock', 12)}${esc(task.startTime)}${task.endTime ? '–' + esc(task.endTime) : ''}</span>`);
     }
     if (task.projectId) metaParts.push(projectDot(task.projectId, projects));
     if (task.repeat && task.repeat !== 'none') {
@@ -163,7 +176,7 @@
     }
     if (task.subtasks?.length) {
       const done = task.subtasks.filter((s) => s.completed).length;
-      metaParts.push(`<span>done/{done}/done/{task.subtasks.length}</span>`);
+      metaParts.push(`<span>${done}/${task.subtasks.length}</span>`);
     }
     (task.tags || []).forEach((t) => {
       metaParts.push(`<span class="chip" style="padding:2px 8px;font-size:11px">#${esc(t)}</span>`);
@@ -175,13 +188,14 @@
       </button>
       <div class="task-body">
         <div class="task-title">${esc(task.title)}</div>
-        {metaParts.length ? `<div class="task-meta">{metaParts.join('')}</div>` : ''}
+        ${metaParts.length ? `<div class="task-meta">${metaParts.join('')}</div>` : ''}
       </div>`;
 
     el.querySelector('.task-check').addEventListener('click', (e) => {
       e.stopPropagation();
       onToggle?.(task);
     });
+
     el.addEventListener('click', () => onOpen?.(task));
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen?.(task); }
@@ -201,21 +215,20 @@
     const el = document.createElement('article');
     el.className = 'card note-card pressable';
     el.dataset.id = note.id;
-    el.setAttribute('role', 'button');
+    el.setAttribute('role', 'article');
     el.setAttribute('tabindex', '0');
 
     const tmp = document.createElement('div');
     tmp.innerHTML = note.content || '';
     const preview = (tmp.textContent || '').trim().slice(0, 140);
-
     const project = projects.find((p) => p.id === note.projectId);
 
     el.innerHTML = `
-      <button class="note-pin-btn note.isPinned?′pinned′:′′"aria−label="{note.isPinned ? 'pinned' : ''}" aria-label="note.isPinned?′pinned′:′′"aria−label="{note.isPinned ? 'Открепить' : 'Закрепить'}">${I.get('pin', 16)}</button>
+      <button class="note-pin-btn ${note.isPinned ? 'pinned' : ''}" aria-label="${note.isPinned ? 'Открепить' : 'Закрепить'}">${I.get('pin', 16)}</button>
       <h3>${esc(note.title || 'Без названия')}</h3>
-      {preview ? `<div class="note-preview">{esc(preview)}</div>` : ''}
+      ${preview ? `<div class="note-preview">${esc(preview)}</div>` : ''}
       <div class="note-footer">
-        {project ? `<span class="project-dot" style="background:{esc(project.color)}"></span><span>${esc(project.name)}</span>` : ''}
+        ${project ? `<span class="project-dot" style="background:${esc(project.color)}"></span><span>${esc(project.name)}</span>` : ''}
         <span style="margin-left:auto">${U.formatShortDate(new Date(note.updatedAt))}</span>
       </div>`;
 
@@ -223,10 +236,12 @@
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen?.(note); }
     });
+
     el.querySelector('.note-pin-btn').addEventListener('click', (e) => {
       e.stopPropagation();
       onTogglePin?.(note);
     });
+
     return el;
   }
 
@@ -236,15 +251,14 @@
     const wrap = document.createElement('section');
     wrap.className = 'calendar-view';
 
-    const label = `U.MONTHSNOM[month]{U.MONTHS_NOM[month]}U.MONTHSN​OM[month]{year}`;
-
+    const label = `${U.MONTHS_NOM[month]} ${year}`;
     wrap.innerHTML = `
       <div class="calendar-header">
         <button class="btn btn-icon btn-ghost" data-nav="prev" aria-label="Предыдущий месяц">${I.get('chevronLeft', 20)}</button>
         <h2 class="calendar-month-label">${label}</h2>
         <button class="btn btn-icon btn-ghost" data-nav="next" aria-label="Следующий месяц">${I.get('chevronRight', 20)}</button>
       </div>
-      <div class="calendar-weekdays">{U.WEEKDAYS_SHORT.map((d) => `<span>{d}</span>`).join('')}</div>
+      <div class="calendar-weekdays">${U.WEEKDAYS_SHORT.map((d) => `<span>${d}</span>`).join('')}</div>
       <div class="calendar-grid"></div>`;
 
     const grid = wrap.querySelector('.calendar-grid');
@@ -256,7 +270,7 @@
       if (selectedISO === cell.iso) btn.classList.add('selected');
       if ((tasksByDate[cell.iso] || []).length) btn.classList.add('has-tasks');
       btn.textContent = cell.date.getDate();
-      btn.setAttribute('aria-label', `cell.date.getDate(){cell.date.getDate()}cell.date.getDate(){U.MONTHS_GEN[cell.date.getMonth()]}`);
+      btn.setAttribute('aria-label', `${cell.date.getDate()} ${U.MONTHS_GEN[cell.date.getMonth()]}`);
       btn.addEventListener('click', () => onSelectDay?.(cell.iso));
       grid.appendChild(btn);
     });
@@ -281,17 +295,19 @@
 
     tasksWithTime.forEach((task) => {
       if (!task.startTime) return;
-      const [sh] = task.startTime.split(':').map(Number);
+      const [sh, sm] = task.startTime.split(':').map(Number);
       const [eh] = (task.endTime || task.startTime).split(':').map(Number);
-      const top = sh * 56 + ((parseInt(task.startTime.split(':')[1], 10) || 0) / 60) * 56;
+      const top = sh * 56 + ((sm || 0) / 60) * 56;
       const height = Math.max(((eh - sh) || 0.5) * 56 - 4, 28);
+
       const hoursCol = wrap.children[sh]?.querySelector('.timeline-hours');
       if (!hoursCol) return;
+
       const ev = document.createElement('button');
       ev.className = 'timeline-event';
       ev.style.top = `${top % 56}px`;
       ev.style.height = `${height}px`;
-      ev.innerHTML = `<strong>esc(task.title)</strong><small>{esc(task.title)}</strong><small>esc(task.title)</strong><small>{esc(task.startTime)}${task.endTime ? '–' + esc(task.endTime) : ''}</small>`;
+      ev.innerHTML = `<strong>${esc(task.title)}</strong><small>${esc(task.startTime)}${task.endTime ? '–' + esc(task.endTime) : ''}</small>`;
       ev.addEventListener('click', () => onOpenTask?.(task));
       hoursCol.appendChild(ev);
     });
@@ -306,45 +322,60 @@
     wrap.className = 'search-bar';
     wrap.innerHTML = `
       ${I.get('search', 20)}
-      <input type="search" placeholder="esc(placeholder)"value="{esc(placeholder)}" value="esc(placeholder)"value="{esc(value)}" aria-label="Поиск">
+      <input type="search" placeholder="${esc(placeholder)}" value="${esc(value)}" aria-label="${esc(placeholder)}">
       <button class="btn-icon" style="width:32px;height:32px;display:none;color:var(--text-tertiary)" aria-label="Очистить">${I.get('x', 18)}</button>`;
+
     const input = wrap.querySelector('input');
     const clearBtn = wrap.querySelector('button');
+
     input.addEventListener('input', () => {
       clearBtn.style.display = input.value ? 'flex' : 'none';
       onInput?.(input.value.trim());
     });
+
     clearBtn.addEventListener('click', () => {
       input.value = '';
       clearBtn.style.display = 'none';
       input.focus();
       onClear?.();
     });
+
     return wrap;
   }
 
   /* ==================== ProgressRing ==================== */
 
+  let ringIdCounter = 0;
+
   function progressRing(percent = 0) {
     const r = 36, c = 2 * Math.PI * r;
     const clamped = Math.max(0, Math.min(100, percent));
+    const uid = `ringGrad-${++ringIdCounter}`;
+
     const wrap = document.createElement('div');
     wrap.className = 'progress-ring';
     wrap.innerHTML = `
       <svg width="88" height="88" viewBox="0 0 88 88">
-        <defs><linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#667eea"/><stop offset="100%" stop-color="#764ba2"/>
-        </linearGradient></defs>
+        <defs>
+          <linearGradient id="${uid}" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#667eea"/>
+            <stop offset="100%" stop-color="#764ba2"/>
+          </linearGradient>
+        </defs>
         <circle class="track" cx="44" cy="44" r="${r}" fill="none" stroke-width="8"/>
         <circle class="bar" cx="44" cy="44" r="${r}" fill="none" stroke-width="8"
-          stroke-dasharray="c"stroke−dashoffset="{c}" stroke-dashoffset="c"stroke−dashoffset="{c}"/>
+          stroke="url(#${uid})" stroke-linecap="round"
+          stroke-dasharray="${c}" stroke-dashoffset="${c}"/>
       </svg>
       <div class="progress-ring-label">0%</div>`;
+
     requestAnimationFrame(() => setTimeout(() => {
       wrap.querySelector('.bar').style.strokeDashoffset = String(c * (1 - clamped / 100));
-      U.animateNumber(wrap.querySelector('.progress-ring-label'), Math.round(clamped));
-      wrap.querySelector('.progress-ring-label').textContent = Math.round(clamped) + '%';
+      const labelEl = wrap.querySelector('.progress-ring-label');
+      U.animateNumber(labelEl, Math.round(clamped));
+      labelEl.textContent = Math.round(clamped) + '%';
     }, 100));
+
     return wrap;
   }
 
@@ -387,12 +418,107 @@
     return bar;
   }
 
+  /* ==================== SubtaskItem (для UI подзадач) ==================== */
+
+  function subtaskItem(subtask, { onToggle, onRemove } = {}) {
+    const el = document.createElement('div');
+    el.className = `subtask-item${subtask.completed ? ' completed' : ''}`;
+    el.dataset.id = subtask.id;
+
+    el.innerHTML = `
+      <button class="task-check" aria-label="${subtask.completed ? 'Вернуть подзадачу' : 'Выполнить подзадачу'}">${I.get('check', 12)}</button>
+      <span>${esc(subtask.title)}</span>
+      <button class="subtask-remove" aria-label="Удалить подзадачу">${I.get('x', 14)}</button>`;
+
+    el.querySelector('.task-check').addEventListener('click', () => onToggle?.(subtask));
+    el.querySelector('.subtask-remove').addEventListener('click', () => onRemove?.(subtask));
+
+    return el;
+  }
+
+  /* ==================== TagInput (для UI тегов) ==================== */
+
+  function tagInput({ tags = [], suggestions = [], onChange } = {}) {
+    const wrap = document.createElement('div');
+    wrap.className = 'tag-input-wrap';
+
+    let currentTags = [...tags];
+
+    function render() {
+      wrap.innerHTML = '';
+      currentTags.forEach((tag) => {
+        const chip = document.createElement('span');
+        chip.className = 'tag-chip';
+        chip.innerHTML = `${esc(tag)}<button aria-label="Удалить тег">${I.get('x', 12)}</button>`;
+        chip.querySelector('button').addEventListener('click', () => {
+          currentTags = currentTags.filter((t) => t !== tag);
+          render();
+          onChange?.(currentTags);
+        });
+        wrap.appendChild(chip);
+      });
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = currentTags.length ? 'Ещё тег…' : 'Добавить тег…';
+      input.style.cssText = 'flex:1;min-width:80px;border:none;background:transparent;font-size:14px;padding:4px 0';
+      input.addEventListener('keydown', (e) => {
+        if ((e.key === 'Enter' || e.key === ',') && input.value.trim()) {
+          e.preventDefault();
+          addTag(input.value.trim());
+          input.value = '';
+        }
+        if (e.key === 'Backspace' && !input.value && currentTags.length) {
+          currentTags.pop();
+          render();
+          onChange?.(currentTags);
+        }
+      });
+      wrap.appendChild(input);
+
+      // Подсказки существующих тегов
+      if (suggestions.length) {
+        const suggWrap = document.createElement('div');
+        suggWrap.className = 'tag-suggestions';
+        suggestions
+          .filter((s) => !currentTags.includes(s))
+          .slice(0, 5)
+          .forEach((s) => {
+            const chip = document.createElement('button');
+            chip.className = 'chip';
+            chip.style.fontSize = '11px';
+            chip.textContent = `#${s}`;
+            chip.addEventListener('click', () => {
+              addTag(s);
+              render();
+            });
+            suggWrap.appendChild(chip);
+          });
+        wrap.parentElement?.querySelector('.tag-suggestions')?.remove();
+        wrap.after(suggWrap);
+      }
+    }
+
+    function addTag(raw) {
+      const clean = raw.trim().toLowerCase().replace(/^#/, '');
+      if (clean && !currentTags.includes(clean)) {
+        currentTags.push(clean);
+        render();
+        onChange?.(currentTags);
+      }
+    }
+
+    render();
+    return wrap;
+  }
+
   /* ==================== Public API ==================== */
 
   window.PlannerComponents = {
     Modal, Toast,
     emptyState, priorityDot, projectDot,
     taskItem, noteCard, calendarGrid, timeline,
-    searchBar, progressRing, segmented, bulkBar
+    searchBar, progressRing, segmented, bulkBar,
+    subtaskItem, tagInput
   };
 })();

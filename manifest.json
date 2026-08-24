@@ -3,49 +3,79 @@
   "short_name": "Planner",
   "description": "Планировщик задач и заметок с офлайн-работой",
   "id": "/PlannerPro/",
-  "start_url": "/PlannerPro/?v=1.0.0",
+  "start_url": "/PlannerPro/?v=1.0.1",
   "scope": "/PlannerPro/",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
+  "display_override": ["standalone", "minimal-ui", "browser"],
   "orientation": "any",
   "background_color": "#ffffff",
   "theme_color": "#667eea",
   "lang": "ru",
   "dir": "ltr",
   "categories": ["productivity", "lifestyle"],
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  },
+  "handle_links": "preferred",
+  "prefer_related_applications": false,
   "icons": [
-    { "src": "icons/icon-72.png?v=1.0.0", "sizes": "72x72", "type": "image/png" },
-    { "src": "icons/icon-96.png?v=1.0.0", "sizes": "96x96", "type": "image/png" },
-    { "src": "icons/icon-128.png?v=1.0.0", "sizes": "128x128", "type": "image/png" },
-    { "src": "icons/icon-144.png?v=1.0.0", "sizes": "144x144", "type": "image/png" },
-    { "src": "icons/icon-152.png?v=1.0.0", "sizes": "152x152", "type": "image/png" },
-    { "src": "icons/icon-192.png?v=1.0.0", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-384.png?v=1.0.0", "sizes": "384x384", "type": "image/png" },
-    { "src": "icons/icon-512.png?v=1.0.0", "sizes": "512x512", "type": "image/png" },
-    { "src": "icons/maskable-icon.png?v=1.0.0", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icon-72.png?v=1.0.1", "sizes": "72x72", "type": "image/png" },
+    { "src": "icon-96.png?v=1.0.1", "sizes": "96x96", "type": "image/png" },
+    { "src": "icon-128.png?v=1.0.1", "sizes": "128x128", "type": "image/png" },
+    { "src": "icon-144.png?v=1.0.1", "sizes": "144x144", "type": "image/png" },
+    { "src": "icon-152.png?v=1.0.1", "sizes": "152x152", "type": "image/png" },
+    { "src": "icon-192.png?v=1.0.1", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-384.png?v=1.0.1", "sizes": "384x384", "type": "image/png" },
+    { "src": "icon-512.png?v=1.0.1", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "maskable-icon.png?v=1.0.1", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "apple-touch-icon.png?v=1.0.1", "sizes": "180x180", "type": "image/png" }
   ],
   "screenshots": [
-    { "src": "screenshots/mobile-1.png?v=1.0.0", "sizes": "390x844", "type": "image/png", "form_factor": "narrow" },
-    { "src": "screenshots/desktop-1.png?v=1.0.0", "sizes": "1280x720", "type": "image/png", "form_factor": "wide" }
+    {
+      "src": "screenshot-mobile-1.png?v=1.0.1",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Главный экран с задачами на день"
+    },
+    {
+      "src": "screenshot-mobile-2.png?v=1.0.1",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Календарь с расписанием"
+    },
+    {
+      "src": "screenshot-desktop-1.png?v=1.0.1",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Планировщик на десктопе"
+    }
   ],
   "shortcuts": [
     {
       "name": "Новая задача",
       "short_name": "Задача",
+      "description": "Быстро создать новую задачу",
       "url": "/PlannerPro/#/tasks?new=1",
-      "icons": [{ "src": "icons/icon-96.png?v=1.0.0", "sizes": "96x96" }]
-    },
-    {
-      "name": "Календарь",
-      "short_name": "Календарь",
-      "url": "/PlannerPro/#/calendar",
-      "icons": [{ "src": "icons/icon-96.png?v=1.0.0", "sizes": "96x96" }]
+      "icons": [{ "src": "icon-96.png?v=1.0.1", "sizes": "96x96" }]
     },
     {
       "name": "Новая заметка",
       "short_name": "Заметка",
+      "description": "Быстро создать новую заметку",
       "url": "/PlannerPro/#/notes?new=1",
-      "icons": [{ "src": "icons/icon-96.png?v=1.0.0", "sizes": "96x96" }]
+      "icons": [{ "src": "icon-96.png?v=1.0.1", "sizes": "96x96" }]
+    },
+    {
+      "name": "Календарь",
+      "short_name": "Календарь",
+      "description": "Открыть календарь",
+      "url": "/PlannerPro/#/calendar",
+      "icons": [{ "src": "icon-96.png?v=1.0.1", "sizes": "96x96" }]
     }
-  ]
+  ],
+  "related_applications": [],
+  "edge_side_panel": {}
 }

@@ -1,9 +1,8 @@
 /* ============================================================
-   Planner Pro — SVG иконки (Lucide-style)  (v1.0.0)
+   Planner Pro — SVG иконки (Lucide-style)  (v1.0.1)
    Все иконки inline-SVG, stroke 2, 24x24 viewBox
    Использование: PlannerIcons.get('home', 24) → HTML string
-   ============================================================ */
-
+============================================================ */
 (function () {
   'use strict';
 
@@ -56,16 +55,28 @@
     repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
     dragHandle: '<circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/>',
     selectAll: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m8 12 3 3 5-6"/>',
-    closeSquare: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m9 9 6 6M15 9l-6 6"/>'
+    closeSquare: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="m9 9 6 6M15 9l-6 6"/>',
+    // Дополнительные иконки для подзадач, тегов, избранного
+    'check-circle': '<circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/>',
+    'file-text': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/>',
+    heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+    layers: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>'
   };
 
+  /**
+   * Возвращает inline SVG иконку по имени.
+   * @param {string} name — ключ иконки
+   * @param {number} size — размер в px (по умолчанию 24)
+   * @param {number} strokeWidth — толщина обводки (по умолчанию 2)
+   * @returns {string} HTML-строка с <svg>
+   */
   function get(name, size = 24, strokeWidth = 2) {
     const path = ICONS[name];
     if (!path) {
       console.warn(`[icons] Unknown icon: ${name}`);
       return '';
     }
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="size"height="{size}" height="size"height="{size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="strokeWidth"stroke−linecap="round"stroke−linejoin="round"aria−hidden="true">{strokeWidth}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">strokeWidth"stroke−linecap="round"stroke−linejoin="round"aria−hidden="true">{path}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
   }
 
   // Приоритетные бейджи (цветные точки)

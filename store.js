@@ -1,8 +1,12 @@
 /* ============================================================
-   Planner Pro — Global state management  (v1.0.0)
+   Planner Pro — Global state management  (v1.0.1)
    Кастомный store на Proxy + подписки (без зависимостей)
-   ============================================================ */
-
+   ------------------------------------------------------------
+   ВАЖНО: Proxy перехватывает только присвоения верхнего уровня
+   (state.tasks = ...). Мутации вложенных объектов
+   (state.taskFilter.search = ...) НЕ триггерят подписки —
+   вьюхи после таких изменений должны вызывать ререндер вручную.
+============================================================ */
 (function () {
   'use strict';
 
@@ -20,7 +24,7 @@
 
     // UI
     loading: true,
-    selectedDate: null,          // Date (ISO string) for calendar/day views
+    selectedDate: null,          // ISO string для calendar/day вьюх
     taskFilter: {
       tab: 'today',              // inbox | today | upcoming | someday
       projectId: null,
@@ -90,12 +94,16 @@
     location.hash = buildHash(view, params);
   }
 
+  /**
+   * Строит hash-роут вида #/view?key=val&key2=val2.
+   * Значения кодируются через encodeURIComponent.
+   */
   function buildHash(view, params = {}) {
     let hash = `#/${view}`;
     const entries = Object.entries(params).filter(([, v]) => v != null && v !== '');
     if (entries.length) {
       hash += '?' + entries.map(([k, v]) =>
-        `encodeURIComponent(k)={encodeURIComponent(k)}=encodeURIComponent(k)={encodeURIComponent(v)}`).join('&');
+        `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
     }
     return hash;
   }
@@ -122,6 +130,7 @@
   }
 
   /* ---------- Online/offline ---------- */
+
   window.addEventListener('online', () => { state.online = true; });
   window.addEventListener('offline', () => { state.online = false; });
 

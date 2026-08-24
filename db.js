@@ -1,10 +1,9 @@
 /* ============================================================
-   Planner Pro — IndexedDB слой  (v1.0.0)
+   Planner Pro — IndexedDB слой  (v1.0.1)
    Чистый IndexedDB без зависимостей
    БД: planner_db v1 — tasks, notes, projects, tags,
-       settings, sync_meta, trash_meta
-   ============================================================ */
-
+       settings, sync_meta
+============================================================ */
 (function () {
   'use strict';
 
@@ -72,6 +71,7 @@
 
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error('IndexedDB blocked'));
     });
     return dbPromise;
   }
@@ -116,10 +116,20 @@
     return promisify(store.clear());
   }
 
+  /**
+   * Надёжный bulkPut — явный Promise через oncomplete,
+   * работает во всех браузерах включая старый Safari.
+   */
   async function bulkPut(storeName, values) {
-    const store = await tx(storeName, 'readwrite');
-    values.forEach((v) => store.put(v));
-    return store.transaction.complete;
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const t = db.transaction(storeName, 'readwrite');
+      const store = t.objectStore(storeName);
+      values.forEach((v) => store.put(v));
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error);
+    });
   }
 
   /* ---------- Index queries ---------- */
